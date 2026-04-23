@@ -27,6 +27,16 @@ const JobListingsPage = () => {
     remote: 'all'
   });
 
+  const getRequiredSkills = (job) => {
+    const skills = job.required_skills || job.requiredSkills || [];
+    return Array.isArray(skills) ? skills : String(skills).split(',');
+  };
+
+  const getSalaryRange = (job) => ({
+    min: job.salary_min ?? job.salaryMin,
+    max: job.salary_max ?? job.salaryMax,
+  });
+
   useEffect(() => {
     fetchJobs();
     if (isAuthenticated && currentUser?.role === 'Job Seeker') {
@@ -39,53 +49,32 @@ const JobListingsPage = () => {
     try {
       if (isAuthenticated && currentUser?.role === 'Job Seeker') {
         // Fetch user skills for smart matching
-        const skillsResponse = await apiServerClient.fetch('/profile/skills', {
+        const skills = await apiServerClient.fetch('/profile/skills', {
           headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         });
 
         let skillNames = [];
-        if (skillsResponse.ok) {
-          const skills = await skillsResponse.json();
-          skillNames = skills.map(s => s.skill_name || s.name);
-        }
+        skillNames = skills.map(s => s.skill_name || s.name);
 
         if (skillNames.length > 0) {
           // Use smart matching endpoint
-          const response = await apiServerClient.fetch('/job-recommendations', {
+          const recommendedJobs = await apiServerClient.fetch('/job-recommendations-v2', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
               'Authorization': `Bearer ${currentUser?.token}`
             },
-            body: JSON.stringify({ userId: currentUser.id, skills: skillNames })
+            body: JSON.stringify({ skills: skillNames })
           });
-
-          if (response.ok) {
-            const jobs = await response.json();
-            setJobs(jobs);
-          } else {
-            // Fallback to regular job search
-            const searchResponse = await apiServerClient.fetch('/jobs/search');
-            if (searchResponse.ok) {
-              const jobs = await searchResponse.json();
-              setJobs(jobs);
-            }
-          }
+          setJobs(recommendedJobs);
         } else {
           // No skills, use regular job search
-          const searchResponse = await apiServerClient.fetch('/jobs/search');
-          if (searchResponse.ok) {
-            const jobs = await searchResponse.json();
-            setJobs(jobs);
-          }
+          const jobs = await apiServerClient.fetch('/jobs/search');
+          setJobs(jobs);
         }
       } else {
         // Not authenticated or not a job seeker, show all jobs
-        const searchResponse = await apiServerClient.fetch('/jobs/search');
-        if (searchResponse.ok) {
-          const jobs = await searchResponse.json();
-          setJobs(jobs);
-        }
+        const jobs = await apiServerClient.fetch('/jobs/search');
+        setJobs(jobs);
       }
     } catch (error) {
       console.error('Error fetching jobs:', error);
@@ -97,14 +86,10 @@ const JobListingsPage = () => {
 
   const fetchSavedJobs = async () => {
     try {
-      const response = await apiServerClient.fetch('/saved-jobs', {
+      const saved = await apiServerClient.fetch('/saved-jobs', {
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-
-      if (response.ok) {
-        const saved = await response.json();
-        setSavedJobIds(new Set(saved.map(s => s.job_id)));
-      }
+      setSavedJobIds(new Set(saved.map(s => s.job_id)));
     } catch (error) {
       console.error("Error fetching saved jobs:", error);
     }
@@ -121,34 +106,27 @@ const JobListingsPage = () => {
     try {
       if (savedJobIds.has(jobId)) {
         // Remove from saved jobs
-        const response = await apiServerClient.fetch(`/saved-jobs/${jobId}`, {
+        await apiServerClient.fetch(`/saved-jobs/${jobId}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         });
-
-        if (response.ok) {
-          setSavedJobIds(prev => {
-            const next = new Set(prev);
-            next.delete(jobId);
-            return next;
-          });
-          toast.success("Job removed from saved list");
-        }
+        setSavedJobIds(prev => {
+          const next = new Set(prev);
+          next.delete(jobId);
+          return next;
+        });
+        toast.success("Job removed from saved list");
       } else {
         // Add to saved jobs
-        const response = await apiServerClient.fetch('/saved-jobs', {
+        await apiServerClient.fetch('/saved-jobs', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             'Authorization': `Bearer ${currentUser?.token}`
           },
           body: JSON.stringify({ job_id: jobId })
         });
-
-        if (response.ok) {
-          setSavedJobIds(prev => new Set(prev).add(jobId));
-          toast.success("Job saved successfully");
-        }
+        setSavedJobIds(prev => new Set(prev).add(jobId));
+        toast.success("Job saved successfully");
       }
     } catch (error) {
       toast.error("Failed to update saved status");
@@ -156,8 +134,8 @@ const JobListingsPage = () => {
   };
 
   const filteredJobs = jobs.filter(job => {
-    if (filters.type !== 'all' && job.job_type !== filters.type) return false;
-    if (filters.remote !== 'all' && job.remote_type !== filters.remote) return false;
+    if (filters.type !== 'all' && (job.jobType || job.job_type) !== filters.type) return false;
+    if (filters.remote !== 'all' && (job.remoteType || job.remote_type) !== filters.remote) return false;
     if (filters.search) {
       const s = filters.search.toLowerCase();
       return job.title.toLowerCase().includes(s) || job.company.toLowerCase().includes(s) || job.location.toLowerCase().includes(s);
@@ -193,9 +171,9 @@ const JobListingsPage = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="Full-time">Full-time</SelectItem>
-              <SelectItem value="Part-time">Part-time</SelectItem>
-              <SelectItem value="Contract">Contract</SelectItem>
+              <SelectItem value="full-time">Full-time</SelectItem>
+              <SelectItem value="part-time">Part-time</SelectItem>
+              <SelectItem value="contract">Contract</SelectItem>
             </SelectContent>
           </Select>
           <Select value={filters.remote} onValueChange={(v) => setFilters({...filters, remote: v})}>
@@ -204,9 +182,9 @@ const JobListingsPage = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Models</SelectItem>
-              <SelectItem value="Remote">Remote</SelectItem>
-              <SelectItem value="On-site">On-site</SelectItem>
-              <SelectItem value="Hybrid">Hybrid</SelectItem>
+              <SelectItem value="remote">Remote</SelectItem>
+              <SelectItem value="on-site">On-site</SelectItem>
+              <SelectItem value="hybrid">Hybrid</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
@@ -234,12 +212,12 @@ const JobListingsPage = () => {
                       <h3 className="text-xl font-bold group-hover:text-primary transition-colors">{job.title}</h3>
                       <p className="text-muted-foreground font-medium mb-2">{job.company}</p>
                       <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1"><MapPin size={14} /> {job.location} ({job.remote_type})</span>
-                        <span className="flex items-center gap-1"><Briefcase size={14} /> {job.job_type}</span>
-                        {(job.salary_min || job.salary_max) && (
+                        <span className="flex items-center gap-1"><MapPin size={14} /> {job.location} ({job.remoteType || job.remote_type})</span>
+                        <span className="flex items-center gap-1"><Briefcase size={14} /> {job.jobType || job.job_type}</span>
+                        {(getSalaryRange(job).min || getSalaryRange(job).max) && (
                           <span className="flex items-center gap-1 text-green-600 font-medium">
                             <DollarSign size={14} /> 
-                            {job.salary_min ? `${job.salary_min/1000}k` : ''} {job.salary_max ? `- ${job.salary_max/1000}k` : ''}
+                            {getSalaryRange(job).min ? `${getSalaryRange(job).min/1000}k` : ''} {getSalaryRange(job).max ? `- ${getSalaryRange(job).max/1000}k` : ''}
                           </span>
                         )}
                       </div>
@@ -247,9 +225,9 @@ const JobListingsPage = () => {
                   </div>
                   
                   <div className="flex flex-row md:flex-col items-center md:items-end justify-between gap-2 shrink-0">
-                    {job.match_score && (
+                    {(job.matchScore || job.match_score) && (
                       <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 px-3 py-1">
-                        <Sparkles size={12} className="mr-1" /> {job.match_score}% Match
+                        <Sparkles size={12} className="mr-1" /> {job.matchScore || job.match_score}% Match
                       </Badge>
                     )}
                     <div className="flex gap-2">
@@ -263,12 +241,12 @@ const JobListingsPage = () => {
                   </div>
                 </div>
                 
-                {job.required_skills && (
+                {getRequiredSkills(job).length > 0 && (
                   <div className="mt-4 pt-4 border-t flex flex-wrap gap-2">
-                    {job.required_skills.split(',').slice(0, 5).map((skill, idx) => (
-                      <Badge key={idx} variant="outline" className="bg-muted/30 font-normal">{skill.trim()}</Badge>
+                    {getRequiredSkills(job).slice(0, 5).map((skill, idx) => (
+                      <Badge key={idx} variant="outline" className="bg-muted/30 font-normal">{String(skill).trim()}</Badge>
                     ))}
-                    {job.required_skills.split(',').length > 5 && <Badge variant="outline" className="bg-muted/30 font-normal">+{job.required_skills.split(',').length - 5} more</Badge>}
+                    {getRequiredSkills(job).length > 5 && <Badge variant="outline" className="bg-muted/30 font-normal">+{getRequiredSkills(job).length - 5} more</Badge>}
                   </div>
                 )}
               </CardContent>
@@ -295,9 +273,9 @@ const JobListingsPage = () => {
                     <DialogTitle className="text-2xl font-bold mb-1">{selectedJob.title}</DialogTitle>
                     <DialogDescription className="text-lg font-medium text-foreground">{selectedJob.company}</DialogDescription>
                   </div>
-                  {selectedJob.match_score && (
+                  {(selectedJob.matchScore || selectedJob.match_score) && (
                     <Badge variant="secondary" className="bg-primary/10 text-primary text-sm px-3 py-1">
-                      <Sparkles size={14} className="mr-1" /> {selectedJob.match_score}% Match
+                      <Sparkles size={14} className="mr-1" /> {selectedJob.matchScore || selectedJob.match_score}% Match
                     </Badge>
                   )}
                 </div>
@@ -310,16 +288,16 @@ const JobListingsPage = () => {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase font-semibold mb-1">Work Model</p>
-                  <p className="font-medium text-sm">{selectedJob.remote_type}</p>
+                  <p className="font-medium text-sm">{selectedJob.remoteType || selectedJob.remote_type}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase font-semibold mb-1">Job Type</p>
-                  <p className="font-medium text-sm">{selectedJob.job_type}</p>
+                  <p className="font-medium text-sm">{selectedJob.jobType || selectedJob.job_type}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase font-semibold mb-1">Salary</p>
                   <p className="font-medium text-sm text-green-600">
-                    {selectedJob.salary_min ? `$${selectedJob.salary_min/1000}k` : 'DOE'} {selectedJob.salary_max ? `- $${selectedJob.salary_max/1000}k` : ''}
+                    {getSalaryRange(selectedJob).min ? `$${getSalaryRange(selectedJob).min/1000}k` : 'DOE'} {getSalaryRange(selectedJob).max ? `- $${getSalaryRange(selectedJob).max/1000}k` : ''}
                   </p>
                 </div>
               </div>
@@ -330,12 +308,12 @@ const JobListingsPage = () => {
                   <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed">{selectedJob.description}</p>
                 </div>
                 
-                {selectedJob.required_skills && (
+                {getRequiredSkills(selectedJob).length > 0 && (
                   <div>
                     <h4 className="text-lg font-semibold mb-3">Required Skills</h4>
                     <div className="flex flex-wrap gap-2">
-                      {selectedJob.required_skills.split(',').map((skill, idx) => (
-                        <Badge key={idx} variant="secondary">{skill.trim()}</Badge>
+                      {getRequiredSkills(selectedJob).map((skill, idx) => (
+                        <Badge key={idx} variant="secondary">{String(skill).trim()}</Badge>
                       ))}
                     </div>
                   </div>

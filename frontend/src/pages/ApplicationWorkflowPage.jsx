@@ -32,23 +32,15 @@ const ApplicationWorkflowPage = () => {
     const fetchData = async () => {
       try {
         // Fetch job data
-        const jobResponse = await apiServerClient.fetch(`/jobs/${jobId}`);
-        if (jobResponse.ok) {
-          const jobData = await jobResponse.json();
-          setJob(jobData);
-        } else {
-          throw new Error('Job not found');
-        }
+        const jobData = await apiServerClient.fetch(`/jobs/${jobId}`);
+        setJob(jobData);
 
         // Fetch profile data
         try {
-          const profileResponse = await apiServerClient.fetch('/profile', {
+          const profileData = await apiServerClient.fetch('/profile', {
             headers: { 'Authorization': `Bearer ${currentUser?.token}` }
           });
-          if (profileResponse.ok) {
-            const profileData = await profileResponse.json();
-            setProfile(profileData);
-          }
+          setProfile(profileData);
         } catch (e) {
           // Profile might not exist yet
         }
@@ -74,19 +66,18 @@ const ApplicationWorkflowPage = () => {
 
     setSubmitting(true);
     try {
-      // Call backend endpoint
-      const response = await apiServerClient.fetch('/apply-job', {
+      const data = await apiServerClient.fetch('/apply-job', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.token}`
+        },
         body: JSON.stringify({
-          jobId: job.id,
-          jobSeekerId: currentUser.id,
+          jobId: job._id || job.id,
           coverLetter: formData.coverLetter,
-          cvFileId: profile?.cv_file || 'uploaded_file' // Simplified for this implementation
+          cvFileId: profile?.cv_file || profile?.cv || 'uploaded_file'
         })
       });
-
-      const data = await response.json();
       if (!data.success) throw new Error(data.error || 'Application failed');
 
       setSuccess(true);

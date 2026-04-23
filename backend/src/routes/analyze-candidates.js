@@ -7,104 +7,91 @@ import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
 import fs from 'fs';
 import path from 'path';
+import pdfParse from 'pdf-parse';
 
 const router = express.Router();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// POST /analyze-candidate
+const extractCvText = async (profile) => {
+  if (!profile?.cv) {
+    return '';
+  }
+
+  const relativePath = profile.cv.replace(/^\/+/, '');
+  const filepath = path.join(process.cwd(), relativePath);
+  if (!fs.existsSync(filepath)) {
+    return '';
+  }
+
+  const buffer = fs.readFileSync(filepath);
+  const extension = path.extname(filepath).toLowerCase();
+  if (extension === '.pdf') {
+    const parsed = await pdfParse(buffer);
+    return parsed.text;
+  }
+
+  return buffer.toString('utf-8');
+};
+
 router.post('/', authMiddleware, async (req, res) => {
-  const { applicationId, cvFileId } = req.body;
-
-  if (!applicationId || !cvFileId) {
-    return res.status(400).json({ error: 'applicationId and cvFileId are required' });
-  }
-
-  // Retrieve application
-  const application = await pb.collection('job_applications').getOne(applicationId);
-  if (!application) {
-    throw new Error('Application not found');
-  }
-
-  // Retrieve CV file from PocketBase
-  const jobSeeker = await pb.collection('job_seeker_profiles').getOne(cvFileId);
-  if (!jobSeeker || !jobSeeker.cv) {
-    throw new Error('CV file not found');
-  }
-
-  // Get CV file URL and fetch content
-  const cvFileUrl = `${pb.baseUrl}/api/files/${jobSeeker.collectionId}/${jobSeeker.id}/${jobSeeker.cv}`;
-  const cvResponse = await fetch(cvFileUrl);
-
-  if (!cvResponse.ok) {
-    throw new Error('Failed to fetch CV file');
-  }
-
-  let cvText = '';
-  const contentType = cvResponse.headers.get('content-type');
-
-  if (contentType && contentType.includes('application/pdf')) {
-    // For PDF, we would need pdf-parse, but for now return text extraction error
-    throw new Error('PDF parsing requires additional setup');
-  } else {
-    cvText = await cvResponse.text();
-  }
-
-  if (!cvText || cvText.trim().length === 0) {
-    throw new Error('Could not extract text from CV file');
-  }
-
-  // Send to OpenAI for analysis
-  const prompt = `Analyze the following CV and provide a detailed candidate analysis. Return your response as valid JSON with these exact keys:
-{
-  "skills": [{"name": "skill_name", "proficiency": "beginner|intermediate|advanced|expert"}],
-  "cv_score": 75,
-  "gaps": ["gap1", "gap2"],
-  "suggestions": ["suggestion1", "suggestion2"]
-}
-
-Guidelines:
-- Extract all technical and soft skills with proficiency levels
-- CV score should be 0-100 based on completeness, clarity, and professionalism
-- Identify skill gaps and areas for improvement
-- Provide actionable suggestions for the candidate
-
-CV Content:
-${cvText}`;
-
-  const message = await openai.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-  });
-
-  let analysisResult;
   try {
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('No JSON found in response');
-    }
-    analysisResult = JSON.parse(jsonMatch[0]);
-  } catch (error) {
-    logger.error('Error parsing OpenAI response:', error);
-    throw new Error('Failed to parse candidate analysis response');
-  }
+    const { applicationId } = req.body;
 
-  res.json({
-    success: true,
-    analysis: {
-      skills: analysisResult.skills || [],
-      cv_score: analysisResult.cv_score || 0,
-      gaps: analysisResult.gaps || [],
-      suggestions: analysisResult.suggestions || [],
-    },
-    error: null,
-  });
+    if (!applicationId) {
+      return res.status(400).json({ error: 'applicationId is required' });
+    }
+
+    const application = await Application.findById(applicationId);
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const profile = await JobSeekerProfile.findOne({ user_id: application.job_seeker_id });
+    if (!profile) {
+      return res.status(404).json({ error: 'Candidate profile not found' });
+    }
+
+    const cvText = await extractCvText(profile);
+    if (!cvText.trim()) {
+      return res.status(400).json({ error: 'Candidate CV is missing or unreadable' });
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'Return candidate analysis as JSON only.',
+        },
+        {
+          role: 'user',
+          content: `Analyze this CV and return JSON with keys skills, cv_score, gaps, suggestions.
+skills must be an array of objects with name and proficiency.
+CV:
+${cvText}`,
+        },
+      ],
+    });
+
+    const content = completion.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(content);
+
+    res.json({
+      success: true,
+      analysis: {
+        skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+        cv_score: Number.isFinite(parsed.cv_score) ? parsed.cv_score : 0,
+        gaps: Array.isArray(parsed.gaps) ? parsed.gaps : [],
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+      },
+      error: null,
+    });
+  } catch (error) {
+    logger.error('Analyze candidate error:', error);
+    res.status(500).json({ error: 'Failed to analyze candidate' });
+  }
 });
 
 export default router;

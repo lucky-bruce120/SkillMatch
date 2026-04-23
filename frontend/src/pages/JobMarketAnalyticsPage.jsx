@@ -18,8 +18,7 @@ const JobMarketAnalyticsPage = () => {
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        const response = await apiServerClient.fetch('/job-market/analytics');
-        const result = await response.json();
+        const result = await apiServerClient.fetch('/job-market/analytics');
         setData(result);
       } catch (error) {
         console.error("Error fetching analytics:", error);

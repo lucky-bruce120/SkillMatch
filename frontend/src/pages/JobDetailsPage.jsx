@@ -33,13 +33,17 @@ const JobDetailsPage = () => {
         if (currentUser) {
           // Check if saved
           try {
-            await apiServerClient.fetch(`/saved-jobs/check?job_id=${id}`);
+            await apiServerClient.fetch(`/saved-jobs/check?job_id=${id}`, {
+              headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+            });
             setIsSaved(true);
           } catch (e) { setIsSaved(false); }
 
           // Check if applied
           try {
-            await apiServerClient.fetch(`/applications/check?job_id=${id}`);
+            await apiServerClient.fetch(`/apply-job/check?job_id=${id}`, {
+              headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+            });
             setHasApplied(true);
           } catch (e) { setHasApplied(false); }
         }
@@ -63,14 +67,16 @@ const JobDetailsPage = () => {
 
     try {
       if (isSaved) {
-        await apiServerClient.fetch(`/saved-jobs?job_id=${id}`, {
-          method: 'DELETE'
+        await apiServerClient.fetch(`/saved-jobs/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         });
         setIsSaved(false);
         toast.success("Removed from saved jobs");
       } else {
         await apiServerClient.fetch('/saved-jobs', {
           method: 'POST',
+          headers: { 'Authorization': `Bearer ${currentUser?.token}` },
           body: JSON.stringify({ job_id: id })
         });
         setIsSaved(true);
@@ -94,6 +100,7 @@ const JobDetailsPage = () => {
     try {
       await apiServerClient.fetch('/apply-job', {
         method: 'POST',
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` },
         body: JSON.stringify({
           jobId: id,
           coverLetter: coverLetter
@@ -167,7 +174,7 @@ const JobDetailsPage = () => {
             <div className="flex items-center text-muted-foreground text-sm gap-1.5">
               <MapPin size={16} /> Location
             </div>
-            <p className="font-medium">{job.location} ({job.remote_type})</p>
+            <p className="font-medium">{job.location} ({job.remoteType})</p>
           </div>
           <div className="space-y-1">
             <div className="flex items-center text-muted-foreground text-sm gap-1.5">
@@ -179,7 +186,7 @@ const JobDetailsPage = () => {
             <div className="flex items-center text-muted-foreground text-sm gap-1.5">
               <Briefcase size={16} /> Job Type
             </div>
-            <p className="font-medium">{job.job_type}</p>
+            <p className="font-medium">{job.jobType}</p>
           </div>
           <div className="space-y-1">
             <div className="flex items-center text-muted-foreground text-sm gap-1.5">
@@ -200,9 +207,9 @@ const JobDetailsPage = () => {
           <section>
             <h2 className="text-2xl font-bold mb-4">Required Skills</h2>
             <div className="flex flex-wrap gap-2">
-              {job.required_skills?.split(',').map((skill, idx) => (
+              {(job.required_skills || []).map((skill, idx) => (
                 <Badge key={idx} variant="secondary" className="text-sm py-1.5 px-3">
-                  {skill.trim()}
+                  {skill}
                 </Badge>
               ))}
             </div>

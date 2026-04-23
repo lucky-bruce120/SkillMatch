@@ -1,5 +1,7 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext.jsx';
+import apiServerClient from '@/lib/apiServerClient.js';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,39 +9,33 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Users, Briefcase, FileText, AlertTriangle, ArrowRight } from 'lucide-react';
 
 const AdminDashboard = () => {
+  const { currentUser } = useAuth();
   const [stats, setStats] = useState({ users: 0, jobs: 0, applications: 0, reports: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchAdminData = async () => {
       try {
-        const usersRes = await pb.collection('users').getList(1, 1, { $autoCancel: false });
-        const jobsRes = await pb.collection('jobs').getList(1, 1, { $autoCancel: false });
-        const appsRes = await pb.collection('job_applications').getList(1, 1, { $autoCancel: false });
-        const reportsRes = await pb.collection('reported_content').getList(1, 1, { filter: 'status="pending"', $autoCancel: false });
-
-        setStats({
-          users: usersRes.totalItems,
-          jobs: jobsRes.totalItems,
-          applications: appsRes.totalItems,
-          reports: reportsRes.totalItems
+        const result = await apiServerClient.fetch('/admin/stats', {
+          headers: { Authorization: `Bearer ${currentUser?.token}` }
         });
+        setStats(result);
       } catch (error) {
-        console.error("Error fetching admin stats:", error);
+        console.error('Error fetching admin stats:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAdminData();
-  }, []);
+    if (currentUser) fetchAdminData();
+  }, [currentUser]);
 
   if (loading) {
     return (
       <div className="dashboard-container space-y-8">
         <Skeleton className="h-12 w-64" />
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32 w-full" />)}
+          {[1, 2, 3, 4].map((index) => <Skeleton key={index} className="h-32 w-full" />)}
         </div>
       </div>
     );
@@ -112,7 +108,7 @@ const AdminDashboard = () => {
             </Button>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground mb-4">View, activate, deactivate, or delete user accounts across the platform.</p>
+            <p className="text-muted-foreground mb-4">View, activate, or deactivate user accounts across the platform.</p>
             <Button asChild className="w-full"><Link to="/admin/users">Go to Users</Link></Button>
           </CardContent>
         </Card>
@@ -127,7 +123,7 @@ const AdminDashboard = () => {
             </Button>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground mb-4">Review posted jobs, approve pending listings, or remove inappropriate content.</p>
+            <p className="text-muted-foreground mb-4">Review posted jobs and manage listing status.</p>
             <Button asChild className="w-full"><Link to="/admin/jobs">Go to Jobs</Link></Button>
           </CardContent>
         </Card>

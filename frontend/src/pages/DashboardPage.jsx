@@ -21,44 +21,29 @@ const DashboardPage = () => {
       try {
         // Fetch profile
         try {
-          const profileResponse = await apiServerClient.fetch('/profile', {
+          const profileData = await apiServerClient.fetch('/profile', {
             headers: { 'Authorization': `Bearer ${currentUser?.token}` }
           });
-          if (profileResponse.ok) {
-            const profileData = await profileResponse.json();
-            setProfile(profileData);
-          } else {
-            setProfile(null);
-          }
+          setProfile(profileData);
         } catch (e) {
           // Profile might not exist yet
           setProfile(null);
         }
 
         // Fetch applications
-        const appsResponse = await apiServerClient.fetch('/applications', {
+        const appsData = await apiServerClient.fetch('/apply-job', {
           headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         });
-        let appsData = [];
-        if (appsResponse.ok) {
-          appsData = await appsResponse.json();
-          setApplications(appsData.slice(0, 5)); // Get first 5 applications
-        }
+        setApplications(appsData.slice(0, 5));
 
         // Fetch saved jobs count
-        const savedResponse = await apiServerClient.fetch('/saved-jobs', {
+        const savedData = await apiServerClient.fetch('/saved-jobs', {
           headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         });
-
-        let savedCount = 0;
-        if (savedResponse.ok) {
-          const savedData = await savedResponse.json();
-          savedCount = savedData.length;
-        }
 
         setStats({
           apps: appsData.length,
-          saved: savedCount
+          saved: savedData.length
         });
 
       } catch (error) {

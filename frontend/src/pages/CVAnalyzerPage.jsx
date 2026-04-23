@@ -26,12 +26,10 @@ const CVAnalyzerPage = () => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const records = await pb.collection('cv_analysis').getList(1, 5, {
-          filter: `user_id="${currentUser.id}"`,
-          sort: '-created',
-          $autoCancel: false
+        const records = await apiServerClient.fetch('/cv?limit=5', {
+          headers: { Authorization: `Bearer ${currentUser?.token}` }
         });
-        setHistory(records.items);
+        setHistory(records);
       } catch (error) {
         console.error("Failed to fetch history", error);
       }
@@ -39,9 +37,8 @@ const CVAnalyzerPage = () => {
     
     const fetchSavedJobs = async () => {
       try {
-        const saved = await pb.collection('saved_jobs').getFullList({
-          filter: `job_seeker_id="${currentUser.id}"`,
-          $autoCancel: false
+        const saved = await apiServerClient.fetch('/saved-jobs', {
+          headers: { Authorization: `Bearer ${currentUser?.token}` }
         });
         setSavedJobIds(new Set(saved.map(s => s.job_id)));
       } catch (error) {
@@ -107,28 +104,24 @@ const CVAnalyzerPage = () => {
       formData.append('cv', fileToAnalyze);
       
       setProgress(40);
-      const response = await apiServerClient.fetch('/cv-upload-analyze', {
+      const data = await apiServerClient.fetch('/cv-upload-analyze', {
         method: 'POST',
-        body: formData
+        headers: { Authorization: `Bearer ${currentUser?.token}` },
+        body: formData,
       });
-
-      if (!response.ok) throw new Error('Analysis failed');
       
       setProgress(70);
-      const data = await response.json();
-      
-      // Save to PocketBase
       setProgress(80);
-      const analysisRecord = await pb.collection('cv_analysis').create({
-        user_id: currentUser.id,
-        file_name: fileToAnalyze.name,
-        extracted_skills: JSON.stringify(data.extractedSkills),
-        cv_score: data.cvScore,
-        missing_skills: JSON.stringify(data.skillGaps),
-        suggestions: JSON.stringify(data.suggestions)
-      }, { $autoCancel: false });
-
-      setAnalysisResult({ ...data, id: analysisRecord.id });
+      setAnalysisResult(data);
+      setHistory(prev => [
+        {
+          id: data.id,
+          created: data.created,
+          cv_file: fileToAnalyze.name,
+          cv_score: data.cvScore,
+        },
+        ...prev.slice(0, 4),
+      ]);
       setProgress(90);
       toast.success("CV analyzed successfully!");
 
@@ -147,14 +140,10 @@ const CVAnalyzerPage = () => {
     try {
       const response = await apiServerClient.fetch('/job-recommendations-v2', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${currentUser?.token}` },
         body: JSON.stringify({ skills })
       });
-      
-      if (response.ok) {
-        const jobs = await response.json();
-        setRecommendedJobs(jobs);
-      }
+      setRecommendedJobs(response);
     } catch (error) {
       console.error("Failed to fetch job recommendations:", error);
     } finally {
@@ -166,8 +155,10 @@ const CVAnalyzerPage = () => {
   const toggleSaveJob = async (jobId) => {
     try {
       if (savedJobIds.has(jobId)) {
-        const saved = await pb.collection('saved_jobs').getFirstListItem(`job_seeker_id="${currentUser.id}" && job_id="${jobId}"`, { $autoCancel: false });
-        await pb.collection('saved_jobs').delete(saved.id, { $autoCancel: false });
+        await apiServerClient.fetch(`/saved-jobs/${jobId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${currentUser?.token}` }
+        });
         setSavedJobIds(prev => {
           const next = new Set(prev);
           next.delete(jobId);
@@ -175,10 +166,11 @@ const CVAnalyzerPage = () => {
         });
         toast.success("Job removed from saved list");
       } else {
-        await pb.collection('saved_jobs').create({
-          job_seeker_id: currentUser.id,
-          job_id: jobId
-        }, { $autoCancel: false });
+        await apiServerClient.fetch('/saved-jobs', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${currentUser?.token}` },
+          body: JSON.stringify({ job_id: jobId })
+        });
         setSavedJobIds(prev => new Set(prev).add(jobId));
         toast.success("Job saved successfully");
       }
@@ -286,7 +278,7 @@ const CVAnalyzerPage = () => {
                 {history.map(record => (
                   <div key={record.id} className="p-4 bg-background rounded-lg border shadow-sm hover:border-primary/50 transition-colors cursor-pointer" onClick={() => navigate(`/cv-analysis/${record.id}`)}>
                     <div className="flex justify-between items-start mb-2">
-                      <p className="font-medium text-sm line-clamp-1" title={record.file_name}>{record.file_name || 'Resume'}</p>
+                      <p className="font-medium text-sm line-clamp-1" title={record.cv_file}>{record.cv_file || 'Resume'}</p>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${record.cv_score >= 80 ? 'bg-green-100 text-green-700' : record.cv_score >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
                         {record.cv_score}
                       </span>

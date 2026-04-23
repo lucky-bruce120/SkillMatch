@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import apiServerClient from '@/lib/apiServerClient.js';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -33,14 +34,11 @@ const InterviewPrepPage = () => {
     const fetchPrepData = async () => {
       setLoading(true);
       try {
-        const [qRes, tRes] = await Promise.all([
-          pb.collection('interview_questions').getList(1, 50, { filter: `job_role~"${role}"`, $autoCancel: false }),
-          pb.collection('interview_tips').getList(1, 50, { filter: `job_role~"${role}" || job_role="General"`, $autoCancel: false })
-        ]);
-        setQuestions(qRes.items);
-        setTips(tRes.items);
+        const result = await apiServerClient.fetch(`/interview-prep/${encodeURIComponent(role)}`);
+        setQuestions(result.questions || []);
+        setTips(result.tips || []);
       } catch (error) {
-        console.error("Error fetching interview prep:", error);
+        console.error('Error fetching interview prep:', error);
       } finally {
         setLoading(false);
       }
@@ -49,8 +47,8 @@ const InterviewPrepPage = () => {
     fetchPrepData();
   }, [role]);
 
-  const filteredQuestions = questions.filter(q => q.question.toLowerCase().includes(searchQuery.toLowerCase()));
-  const filteredTips = tips.filter(t => t.tip_text.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredQuestions = questions.filter((question) => question.question.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredTips = tips.filter((tip) => tip.tip_text.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -62,9 +60,9 @@ const InterviewPrepPage = () => {
         <div className="flex gap-3 w-full md:w-auto">
           <div className="relative flex-1 md:w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search..." 
-              className="pl-9" 
+            <Input
+              placeholder="Search..."
+              className="pl-9"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -101,20 +99,16 @@ const InterviewPrepPage = () => {
             <CardContent>
               {loading ? (
                 <div className="space-y-4">
-                  {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+                  {[1, 2, 3, 4].map((index) => <Skeleton key={index} className="h-16 w-full" />)}
                 </div>
               ) : filteredQuestions.length > 0 ? (
                 <Accordion type="single" collapsible className="w-full space-y-4">
-                  {filteredQuestions.map((q, idx) => (
-                    <AccordionItem key={q.id} value={`item-${idx}`} className="border rounded-lg px-4 bg-background shadow-sm">
+                  {filteredQuestions.map((question, index) => (
+                    <AccordionItem key={question.id} value={`item-${index}`} className="border rounded-lg px-4 bg-background shadow-sm">
                       <AccordionTrigger className="text-left font-medium hover:no-underline py-4">
                         <div className="flex items-center gap-3 w-full pr-4">
-                          <span className="flex-1">{q.question}</span>
-                          <Badge variant="outline" className={
-                            q.difficulty === 'Easy' ? 'text-green-600 border-green-200 bg-green-50' :
-                            q.difficulty === 'Medium' ? 'text-yellow-600 border-yellow-200 bg-yellow-50' :
-                            'text-red-600 border-red-200 bg-red-50'
-                          }>{q.difficulty}</Badge>
+                          <span className="flex-1">{question.question}</span>
+                          <Badge variant="outline">{question.difficulty}</Badge>
                         </div>
                       </AccordionTrigger>
                       <AccordionContent className="text-muted-foreground pt-2 pb-4 border-t mt-2">
@@ -122,7 +116,7 @@ const InterviewPrepPage = () => {
                           <strong className="text-foreground block mb-2 flex items-center gap-2">
                             <Lightbulb size={16} className="text-yellow-500" /> Sample Answer Approach:
                           </strong>
-                          <p className="whitespace-pre-wrap leading-relaxed">{q.sample_answer || "Focus on the STAR method: Situation, Task, Action, Result. Be specific about your contributions."}</p>
+                          <p className="whitespace-pre-wrap leading-relaxed">{question.sample_answer || 'Focus on the STAR method: Situation, Task, Action, Result. Be specific about your contributions.'}</p>
                         </div>
                       </AccordionContent>
                     </AccordionItem>
@@ -141,7 +135,7 @@ const InterviewPrepPage = () => {
         <TabsContent value="tips">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {loading ? (
-              [1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32 w-full" />)
+              [1, 2, 3, 4].map((index) => <Skeleton key={index} className="h-32 w-full" />)
             ) : filteredTips.length > 0 ? (
               filteredTips.map((tip) => (
                 <Card key={tip.id} className="hover:shadow-md transition-shadow border-l-4 border-l-primary">
@@ -168,14 +162,14 @@ const InterviewPrepPage = () => {
           <Card>
             <CardHeader>
               <CardTitle>Pre-Interview Checklist</CardTitle>
-              <CardDescription>Make sure you're fully prepared before the big day.</CardDescription>
+              <CardDescription>Make sure you&apos;re fully prepared before the big day.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {checklistItems.map((item) => (
                   <div key={item.id} className="flex items-start space-x-3 p-4 hover:bg-muted/50 rounded-lg transition-colors border border-transparent hover:border-border">
                     <Checkbox id={item.id} className="mt-1 h-5 w-5" />
-                    <label htmlFor={item.id} className="text-base font-medium leading-relaxed peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer select-none">
+                    <label htmlFor={item.id} className="text-base font-medium leading-relaxed cursor-pointer select-none">
                       {item.label}
                     </label>
                   </div>
@@ -198,17 +192,17 @@ const InterviewPrepPage = () => {
                   { title: 'System Design Primer', desc: 'Essential concepts for technical interviews.', type: 'Guide' },
                   { title: 'Salary Negotiation Tactics', desc: 'Learn how to negotiate your compensation package.', type: 'Video' },
                   { title: 'Body Language in Interviews', desc: 'Non-verbal cues that make a great impression.', type: 'Article' }
-                ].map((res, i) => (
-                  <div key={i} className="flex items-start gap-4 p-5 border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer group">
+                ].map((resource, index) => (
+                  <div key={index} className="flex items-start gap-4 p-5 border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer group">
                     <div className="p-3 bg-primary/10 text-primary rounded-lg group-hover:scale-110 transition-transform">
                       <LinkIcon size={24} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-lg">{res.title}</h4>
-                        <Badge variant="outline" className="text-[10px] h-5">{res.type}</Badge>
+                        <h4 className="font-semibold text-lg">{resource.title}</h4>
+                        <Badge variant="outline" className="text-[10px] h-5">{resource.type}</Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground">{res.desc}</p>
+                      <p className="text-sm text-muted-foreground">{resource.desc}</p>
                     </div>
                   </div>
                 ))}

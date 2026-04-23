@@ -1,4 +1,6 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext.jsx';
+import apiServerClient from '@/lib/apiServerClient.js';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -6,35 +8,39 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 const JobModerationPage = () => {
+  const { currentUser } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchJobs = async () => {
     try {
-      const result = await pb.collection('jobs').getList(1, 50, {
-        sort: '-created',
-        $autoCancel: false
+      const result = await apiServerClient.fetch('/admin/jobs', {
+        headers: { Authorization: `Bearer ${currentUser?.token}` }
       });
-      setJobs(result.items);
+      setJobs(result);
     } catch (error) {
-      console.error("Error fetching jobs:", error);
-      toast.error("Failed to load jobs");
+      console.error('Error fetching jobs:', error);
+      toast.error('Failed to load jobs');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchJobs();
-  }, []);
+    if (currentUser) fetchJobs();
+  }, [currentUser]);
 
   const updateStatus = async (id, newStatus) => {
     try {
-      await pb.collection('jobs').update(id, { status: newStatus }, { $autoCancel: false });
-      setJobs(jobs.map(j => j.id === id ? { ...j, status: newStatus } : j));
+      await apiServerClient.fetch(`/admin/jobs/${id}/status`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${currentUser?.token}` },
+        body: JSON.stringify({ status: newStatus })
+      });
+      setJobs(jobs.map((job) => ((job.id === id || job._id === id) ? { ...job, status: newStatus } : job)));
       toast.success(`Job marked as ${newStatus}`);
     } catch (error) {
-      toast.error("Failed to update job status");
+      toast.error('Failed to update job status');
     }
   };
 
@@ -68,30 +74,33 @@ const JobModerationPage = () => {
             </tr>
           </thead>
           <tbody>
-            {jobs.map((job) => (
-              <tr key={job.id}>
-                <td className="font-medium">{job.title}</td>
-                <td>{job.company}</td>
-                <td>{new Date(job.created).toLocaleDateString()}</td>
-                <td>
-                  <Badge variant={job.status === 'published' ? 'default' : job.status === 'closed' ? 'secondary' : 'outline'}>
-                    {job.status || 'draft'}
-                  </Badge>
-                </td>
-                <td className="text-right space-x-2">
-                  {job.status !== 'published' && (
-                    <Button variant="outline" size="sm" onClick={() => updateStatus(job.id, 'published')} className="text-green-600 hover:bg-green-50">
-                      Approve
-                    </Button>
-                  )}
-                  {job.status !== 'closed' && (
-                    <Button variant="outline" size="sm" onClick={() => updateStatus(job.id, 'closed')} className="text-destructive hover:bg-destructive/10">
-                      Close
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {jobs.map((job) => {
+              const id = job._id || job.id;
+              return (
+                <tr key={id}>
+                  <td className="font-medium">{job.title}</td>
+                  <td>{job.company}</td>
+                  <td>{new Date(job.created).toLocaleDateString()}</td>
+                  <td>
+                    <Badge variant={job.status === 'active' ? 'default' : job.status === 'inactive' ? 'secondary' : 'outline'}>
+                      {job.status || 'draft'}
+                    </Badge>
+                  </td>
+                  <td className="text-right space-x-2">
+                    {job.status !== 'active' && (
+                      <Button variant="outline" size="sm" onClick={() => updateStatus(id, 'active')} className="text-green-600 hover:bg-green-50">
+                        Approve
+                      </Button>
+                    )}
+                    {job.status !== 'inactive' && (
+                      <Button variant="outline" size="sm" onClick={() => updateStatus(id, 'inactive')} className="text-destructive hover:bg-destructive/10">
+                        Close
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

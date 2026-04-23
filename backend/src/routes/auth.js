@@ -1,6 +1,6 @@
+import crypto from 'crypto';
 import express from 'express';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import generateToken from '../utils/tokenGenerator.js';
 import logger from '../utils/logger.js';
@@ -8,7 +8,9 @@ import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
 
-// POST /auth/signup
+const generateShortCode = () => String(Math.floor(100000 + Math.random() * 900000));
+const generateResetToken = () => crypto.randomBytes(24).toString('hex');
+
 router.post('/signup', async (req, res) => {
   const { email, password, role } = req.body;
 
@@ -29,19 +31,20 @@ router.post('/signup', async (req, res) => {
   }
 
   try {
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10);
+    const emailVerificationCode = generateShortCode();
 
     const user = new User({
       email,
       password: hashedPassword,
       role,
       emailVerified: false,
+      emailVerificationCode,
     });
 
     await user.save();
@@ -53,17 +56,17 @@ router.post('/signup', async (req, res) => {
         id: user._id,
         email: user.email,
         role: user.role,
+        account_status: user.account_status,
       },
       token,
+      emailVerificationCode,
     });
   } catch (error) {
-    console.error('Signup error:', error.message);
     logger.error('Signup error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// POST /auth/login
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -77,8 +80,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (user.account_status === 'deactivated') {
+      return res.status(403).json({ error: 'Account is deactivated' });
+    }
 
+    const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -90,6 +96,7 @@ router.post('/login', async (req, res) => {
         id: user._id,
         email: user.email,
         role: user.role,
+        account_status: user.account_status,
       },
       token,
     });
@@ -99,7 +106,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST /auth/verify-email
 router.post('/verify-email', async (req, res) => {
   const { email, code } = req.body;
 
@@ -107,25 +113,27 @@ router.post('/verify-email', async (req, res) => {
     return res.status(400).json({ error: 'Email and code are required' });
   }
 
-  const user = await pb.collection('users').getFirstListItem(`email = "${email}"`);
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+    if (user.emailVerificationCode !== code) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    user.emailVerified = true;
+    user.emailVerificationCode = undefined;
+    await user.save();
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Verify email error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  if (user.emailVerificationCode !== code) {
-    return res.status(400).json({ error: 'Invalid verification code' });
-  }
-
-  await pb.collection('users').update(user.id, {
-    emailVerified: true,
-    emailVerificationCode: null,
-  });
-
-  res.json({ success: true });
 });
 
-// GET /auth/verify
 router.get('/verify', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
@@ -137,6 +145,7 @@ router.get('/verify', authMiddleware, async (req, res) => {
       id: user._id,
       email: user.email,
       role: user.role,
+      account_status: user.account_status,
     });
   } catch (error) {
     logger.error('Verify auth error:', error);
@@ -144,7 +153,6 @@ router.get('/verify', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /auth/forgot-password
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
 
@@ -152,60 +160,61 @@ router.post('/forgot-password', async (req, res) => {
     return res.status(400).json({ error: 'Email is required' });
   }
 
-  const user = await pb.collection('users').getFirstListItem(`email = "${email}"`);
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+    const resetToken = generateResetToken();
+    user.passwordResetToken = resetToken;
+    user.passwordResetExpiry = new Date(Date.now() + 3600000);
+    await user.save();
+
+    logger.info(`Password reset token generated for ${email}: ${resetToken}`);
+
+    res.json({
+      message: 'Reset link sent to email',
+      resetToken,
+    });
+  } catch (error) {
+    logger.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const resetToken = Buffer.from(Math.random().toString()).toString('base64').substring(0, 32);
-  const resetTokenExpiry = new Date(Date.now() + 3600000).toISOString();
-
-  await pb.collection('users').update(user.id, {
-    passwordResetToken: resetToken,
-    passwordResetExpiry: resetTokenExpiry,
-  });
-
-  logger.info(`Password reset token generated for ${email}. Token: ${resetToken}`);
-
-  res.json({ message: 'Reset link sent to email' });
 });
 
-// POST /auth/reset-password
 router.post('/reset-password', async (req, res) => {
-  const { token, newPassword } = req.body;
+  const { token, password, passwordConfirm, newPassword } = req.body;
+  const nextPassword = password || newPassword;
 
-  if (!token || !newPassword) {
+  if (!token || !nextPassword) {
     return res.status(400).json({ error: 'Token and new password are required' });
   }
 
-  if (newPassword.length < 6) {
+  if (nextPassword.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
 
-  const user = await pb.collection('users').getFirstListItem(`passwordResetToken = "${token}"`);
-
-  if (!user) {
-    return res.status(400).json({ error: 'Invalid or expired reset token' });
+  if (passwordConfirm && nextPassword !== passwordConfirm) {
+    return res.status(400).json({ error: 'Passwords do not match' });
   }
 
-  const now = new Date();
-  const expiry = new Date(user.passwordResetExpiry);
+  try {
+    const user = await User.findOne({ passwordResetToken: token });
+    if (!user || !user.passwordResetExpiry || new Date() > user.passwordResetExpiry) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
 
-  if (now > expiry) {
-    return res.status(400).json({ error: 'Reset token has expired' });
+    user.password = await bcrypt.hash(nextPassword, 10);
+    user.passwordResetToken = undefined;
+    user.passwordResetExpiry = undefined;
+    await user.save();
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-  await pb.collection('users').update(user.id, {
-    password: hashedPassword,
-    passwordConfirm: hashedPassword,
-    passwordResetToken: null,
-    passwordResetExpiry: null,
-  });
-
-  res.json({ success: true });
 });
 
 export default router;

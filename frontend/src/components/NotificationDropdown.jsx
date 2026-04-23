@@ -1,7 +1,8 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '@/contexts/AuthContext.jsx';
+import apiServerClient from '@/lib/apiServerClient.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx';
@@ -27,64 +28,77 @@ const NotificationDropdown = ({ isOpen, onClose, onCountUpdate }) => {
         onClose();
       }
     };
+
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
+
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
 
   const fetchNotifications = async () => {
     try {
-      const result = await pb.collection('notifications').getList(1, 50, {
-        filter: `user_id="${currentUser.id}"`,
-        sort: 'read,-created_at',
-        $autoCancel: false
+      const result = await apiServerClient.fetch('/notifications', {
+        headers: { Authorization: `Bearer ${currentUser?.token}` }
       });
-      setNotifications(result.items);
-      onCountUpdate(result.items.filter(n => !n.read).length);
+      setNotifications(result);
+      onCountUpdate(result.filter((notification) => !notification.isRead).length);
     } catch (error) {
-      console.error("Error fetching notifications:", error);
+      console.error('Error fetching notifications:', error);
     }
   };
 
   const markAsRead = async (id, e) => {
     e.stopPropagation();
     try {
-      await pb.collection('notifications').update(id, { read: true }, { $autoCancel: false });
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-      onCountUpdate(prev => Math.max(0, prev - 1));
+      await apiServerClient.fetch(`/notifications/${id}/read`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${currentUser?.token}` }
+      });
+      setNotifications((prev) => prev.map((notification) => (
+        (notification.id === id || notification._id === id)
+          ? { ...notification, isRead: true }
+          : notification
+      )));
+      onCountUpdate((prev) => Math.max(0, prev - 1));
     } catch (error) {
-      toast.error("Failed to mark as read");
+      toast.error('Failed to mark as read');
     }
   };
 
   const deleteNotification = async (id, e) => {
     e.stopPropagation();
     try {
-      const notif = notifications.find(n => n.id === id);
-      await pb.collection('notifications').delete(id, { $autoCancel: false });
-      setNotifications(prev => prev.filter(n => n.id !== id));
-      if (!notif.read) {
-        onCountUpdate(prev => Math.max(0, prev - 1));
+      const notification = notifications.find((item) => item.id === id || item._id === id);
+      await apiServerClient.fetch(`/notifications/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${currentUser?.token}` }
+      });
+      setNotifications((prev) => prev.filter((item) => item.id !== id && item._id !== id));
+      if (!notification?.isRead) {
+        onCountUpdate((prev) => Math.max(0, prev - 1));
       }
-      toast.success("Notification deleted");
+      toast.success('Notification deleted');
     } catch (error) {
-      toast.error("Failed to delete notification");
+      toast.error('Failed to delete notification');
     }
   };
 
-  const filteredNotifications = notifications.filter(n => {
+  const filteredNotifications = notifications.filter((notification) => {
     if (filter === 'all') return true;
-    return n.type === filter;
+    return notification.type === filter;
   });
 
   const getIcon = (type) => {
-    switch(type) {
-      case 'job_match': return <Briefcase className="h-4 w-4 text-blue-500" />;
-      case 'application_update': return <Bell className="h-4 w-4 text-green-500" />;
-      case 'new_message': return <MessageSquare className="h-4 w-4 text-purple-500" />;
-      case 'interview_invitation': return <Calendar className="h-4 w-4 text-orange-500" />;
-      default: return <Bell className="h-4 w-4 text-primary" />;
+    switch (type) {
+      case 'new_job_match':
+        return <Briefcase className="h-4 w-4 text-blue-500" />;
+      case 'application_response':
+        return <Bell className="h-4 w-4 text-green-500" />;
+      case 'message':
+        return <MessageSquare className="h-4 w-4 text-purple-500" />;
+      default:
+        return <Bell className="h-4 w-4 text-primary" />;
     }
   };
 
@@ -101,50 +115,53 @@ const NotificationDropdown = ({ isOpen, onClose, onCountUpdate }) => {
         >
           <div className="p-4 border-b bg-muted/30 flex justify-between items-center shrink-0">
             <h3 className="font-semibold text-lg">Notifications</h3>
-            <Badge variant="secondary">{notifications.filter(n => !n.read).length} New</Badge>
+            <Badge variant="secondary">{notifications.filter((notification) => !notification.isRead).length} New</Badge>
           </div>
-          
+
           <div className="px-2 pt-2 shrink-0">
             <Tabs value={filter} onValueChange={setFilter} className="w-full">
               <TabsList className="w-full grid grid-cols-4 h-auto p-1">
                 <TabsTrigger value="all" className="text-xs py-1.5">All</TabsTrigger>
-                <TabsTrigger value="job_match" className="text-xs py-1.5">Jobs</TabsTrigger>
-                <TabsTrigger value="application_update" className="text-xs py-1.5">Apps</TabsTrigger>
-                <TabsTrigger value="new_message" className="text-xs py-1.5">Msgs</TabsTrigger>
+                <TabsTrigger value="new_job_match" className="text-xs py-1.5">Jobs</TabsTrigger>
+                <TabsTrigger value="application_response" className="text-xs py-1.5">Apps</TabsTrigger>
+                <TabsTrigger value="message" className="text-xs py-1.5">Msgs</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
           <div className="overflow-y-auto flex-1 p-2 space-y-1">
             {filteredNotifications.length > 0 ? (
-              filteredNotifications.map(notif => (
-                <div 
-                  key={notif.id} 
-                  className={`p-3 rounded-lg flex gap-3 group transition-colors ${notif.read ? 'bg-transparent hover:bg-muted/50' : 'bg-primary/5 border border-primary/10'}`}
-                >
-                  <div className="mt-1 shrink-0 p-2 bg-background rounded-full shadow-sm h-8 w-8 flex items-center justify-center">
-                    {getIcon(notif.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm ${notif.read ? 'text-muted-foreground' : 'text-foreground font-medium'}`}>
-                      {notif.message}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(notif.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    {!notif.read && (
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={(e) => markAsRead(notif.id, e)} title="Mark as read">
-                        <Check size={14} />
+              filteredNotifications.map((notification) => {
+                const id = notification.id || notification._id;
+                return (
+                  <div
+                    key={id}
+                    className={`p-3 rounded-lg flex gap-3 group transition-colors ${notification.isRead ? 'bg-transparent hover:bg-muted/50' : 'bg-primary/5 border border-primary/10'}`}
+                  >
+                    <div className="mt-1 shrink-0 p-2 bg-background rounded-full shadow-sm h-8 w-8 flex items-center justify-center">
+                      {getIcon(notification.type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm ${notification.isRead ? 'text-muted-foreground' : 'text-foreground font-medium'}`}>
+                        {notification.message}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {new Date(notification.created || notification.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      {!notification.isRead && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:bg-green-50" onClick={(e) => markAsRead(id, e)} title="Mark as read">
+                          <Check size={14} />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => deleteNotification(id, e)} title="Delete">
+                        <Trash2 size={14} />
                       </Button>
-                    )}
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => deleteNotification(notif.id, e)} title="Delete">
-                      <Trash2 size={14} />
-                    </Button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="py-12 text-center text-muted-foreground flex flex-col items-center">
                 <Bell className="h-8 w-8 mb-2 opacity-20" />
@@ -152,7 +169,7 @@ const NotificationDropdown = ({ isOpen, onClose, onCountUpdate }) => {
               </div>
             )}
           </div>
-          
+
           <div className="p-2 border-t bg-muted/10 shrink-0">
             <Button variant="ghost" className="w-full text-sm" asChild onClick={onClose}>
               <Link to="/notifications">View All Notifications</Link>

@@ -8,6 +8,41 @@ import logger from '../utils/logger.js';
 
 const router = express.Router();
 
+const mapCandidateProfile = (profile, user) => ({
+  id: String(profile._id),
+  _id: String(profile._id),
+  user_id: String(profile.user_id),
+  full_name: profile.full_name || [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || user.email,
+  bio: profile.bio || '',
+  location: profile.location || profile.address || '',
+  phone: profile.phone || '',
+  email: user.email,
+  picture: profile.picture || null,
+  cv: profile.cv || null,
+  cv_file: profile.cv || null,
+  skills: (profile.skillDetails || []).map((skill) => ({
+    id: String(skill._id),
+    skill_name: skill.skill_name || '',
+    proficiency_level: skill.proficiency_level || 'Beginner',
+    endorsement_count: skill.endorsement_count || 0,
+  })),
+  experience: (profile.experience || []).map((item) => ({
+    id: String(item._id),
+    position: item.job_title || item.title || '',
+    company: item.company || '',
+    start_date: item.start_date || item.startDate || null,
+    end_date: item.end_date || item.endDate || null,
+    description: item.description || '',
+  })),
+  education: (profile.education || []).map((item) => ({
+    id: String(item._id),
+    school: item.school || item.institution || '',
+    degree: item.degree || '',
+    field: item.field || item.field_of_study || '',
+    graduation_year: item.graduation_year || item.graduationYear || null,
+  })),
+});
+
 // GET /employer/jobs - Get jobs posted by current employer
 router.get('/jobs', authMiddleware, async (req, res) => {
   try {
@@ -174,6 +209,40 @@ router.get('/applications', authMiddleware, async (req, res) => {
     res.json(applications);
   } catch (error) {
     logger.error('Get employer applications error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /employer/candidates/:candidateId - Get candidate profile for employers
+router.get('/candidates/:candidateId', authMiddleware, async (req, res) => {
+  try {
+    const employerId = req.userId;
+    const { candidateId } = req.params;
+
+    const employerJobs = await Job.find({ employer_id: employerId }, '_id');
+    const jobIds = employerJobs.map((job) => job._id);
+
+    const application = await Application.findOne({
+      job_id: { $in: jobIds },
+      job_seeker_id: candidateId,
+    });
+
+    if (!application) {
+      return res.status(404).json({ error: 'Candidate not found for this employer' });
+    }
+
+    const [user, profile] = await Promise.all([
+      User.findById(candidateId).select('email'),
+      JobSeekerProfile.findOne({ user_id: candidateId }),
+    ]);
+
+    if (!user || !profile) {
+      return res.status(404).json({ error: 'Candidate profile not found' });
+    }
+
+    res.json(mapCandidateProfile(profile, user));
+  } catch (error) {
+    logger.error('Get candidate profile error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

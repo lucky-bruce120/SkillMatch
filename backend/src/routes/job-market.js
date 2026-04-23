@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from 'express';
 import Job from '../models/Job.js';
 import Application from '../models/Application.js';
@@ -7,129 +6,97 @@ import logger from '../utils/logger.js';
 
 const router = express.Router();
 
-// GET /job-market/analytics
 router.get('/analytics', async (req, res) => {
   try {
-    // Fetch all jobs
-    const jobs = await pb.collection('jobs').getFullList();
+    const [jobs, applications, profiles] = await Promise.all([
+      Job.find(),
+      Application.find(),
+      JobSeekerProfile.find(),
+    ]);
 
-    // Fetch all job applications
-    const applications = await pb.collection('job_applications').getFullList();
+    const skillDemand = new Map();
+    const skillSupply = new Map();
 
-    // Fetch all job seeker profiles for skills data
-    const profiles = await pb.collection('job_seeker_profiles').getFullList();
-
-    // 1. Calculate trending skills
-    const skillsMap = new Map();
-    profiles.forEach(profile => {
-      if (profile.skills) {
-        const skills = profile.skills.split(',').map(s => s.trim().toLowerCase());
-        skills.forEach(skill => {
-          skillsMap.set(skill, (skillsMap.get(skill) || 0) + 1);
-        });
-      }
+    jobs.forEach((job) => {
+      (job.required_skills || []).forEach((skill) => {
+        const key = String(skill).trim().toLowerCase();
+        if (!key) return;
+        skillDemand.set(key, (skillDemand.get(key) || 0) + 1);
+      });
     });
 
-    const trendingSkills = Array.from(skillsMap.entries())
+    profiles.forEach((profile) => {
+      const skills = [
+        ...(profile.skills || []),
+        ...((profile.skillDetails || []).map((skill) => skill.skill_name)),
+      ];
+
+      skills.forEach((skill) => {
+        const key = String(skill).trim().toLowerCase();
+        if (!key) return;
+        skillSupply.set(key, (skillSupply.get(key) || 0) + 1);
+      });
+    });
+
+    const trending_skills = Array.from(skillDemand.entries())
       .map(([skill, count]) => ({
         skill,
         count,
-        growth_percent: Math.round((count / profiles.length) * 100),
+        growth_percent: profiles.length ? Math.round((count / profiles.length) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    // 2. Calculate salary trends
-    const salaryTrendsMap = new Map();
-    jobs.forEach(job => {
-      const key = `${job.requiredExperience || 'entry'}-${job.location || 'remote'}`;
-      if (!salaryTrendsMap.has(key)) {
-        salaryTrendsMap.set(key, { salaries: [], count: 0 });
-      }
-      const data = salaryTrendsMap.get(key);
-      if (job.salary) {
-        data.salaries.push(job.salary);
-      }
-      data.count += 1;
+    const salary_trends = ['entry', 'mid', 'senior', 'executive'].map((level) => {
+      const matchingJobs = jobs.filter((job) => job.experience_level === level);
+      const salaries = matchingJobs
+        .map((job) => job.salary_max || job.salary_min || job.salary)
+        .filter(Boolean);
+
+      return {
+        experience_level: level,
+        avg_salary: salaries.length
+          ? Math.round(salaries.reduce((sum, value) => sum + value, 0) / salaries.length)
+          : 0,
+      };
     });
 
-    const salaryTrends = Array.from(salaryTrendsMap.entries()).map(([key, data]) => {
-      const [experienceLevel, location] = key.split('-');
-      const avgSalary =
-        data.salaries.length > 0
-          ? Math.round(data.salaries.reduce((a, b) => a + b, 0) / data.salaries.length)
-          : 0;
-      return { experience_level: experienceLevel, location, avg_salary: avgSalary };
-    });
-
-    // 3. Calculate job distribution by industry
-    const industryMap = new Map();
-    jobs.forEach(job => {
-      const industry = job.industry || 'Unknown';
-      industryMap.set(industry, (industryMap.get(industry) || 0) + 1);
-    });
-
-    const jobDistribution = Array.from(industryMap.entries())
+    const job_distribution = Array.from(
+      jobs.reduce((map, job) => {
+        const key = job.company || 'Unknown';
+        map.set(key, (map.get(key) || 0) + 1);
+        return map;
+      }, new Map()).entries()
+    )
       .map(([industry, count]) => ({ industry, count }))
-      .sort((a, b) => b.count - a.count);
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
 
-    // 4. Calculate experience demand
-    const experienceMap = new Map();
-    jobs.forEach(job => {
-      const level = job.requiredExperience || 'entry';
-      experienceMap.set(level, (experienceMap.get(level) || 0) + 1);
-    });
-
-    const experienceDemand = Array.from(experienceMap.entries()).map(([level, count]) => ({
-      level,
-      count,
-    }));
-
-    // 5. Calculate skills gap
-    const requiredSkillsMap = new Map();
-    jobs.forEach(job => {
-      if (job.requiredSkills) {
-        const skills = job.requiredSkills.split(',').map(s => s.trim().toLowerCase());
-        skills.forEach(skill => {
-          if (!requiredSkillsMap.has(skill)) {
-            requiredSkillsMap.set(skill, { in_demand: 0, available: 0 });
-          }
-          requiredSkillsMap.get(skill).in_demand += 1;
-        });
-      }
-    });
-
-    // Count available talent for each skill
-    profiles.forEach(profile => {
-      if (profile.skills) {
-        const skills = profile.skills.split(',').map(s => s.trim().toLowerCase());
-        skills.forEach(skill => {
-          if (requiredSkillsMap.has(skill)) {
-            requiredSkillsMap.get(skill).available += 1;
-          }
-        });
-      }
-    });
-
-    const skillsGap = Array.from(requiredSkillsMap.entries())
-      .map(([skill, data]) => ({
+    const skills_gap = Array.from(skillDemand.entries())
+      .map(([skill, inDemand]) => ({
         skill,
-        in_demand_count: data.in_demand,
-        available_talent_count: data.available,
+        in_demand_count: inDemand,
+        available_talent_count: skillSupply.get(skill) || 0,
       }))
       .sort((a, b) => b.in_demand_count - a.in_demand_count)
       .slice(0, 15);
 
     res.json({
-      trending_skills: trendingSkills,
-      salary_trends: salaryTrends,
-      job_distribution: jobDistribution,
-      experience_demand: experienceDemand,
-      skills_gap: skillsGap,
+      trending_skills,
+      salary_trends,
+      job_distribution,
+      experience_demand: [
+        { level: 'entry', count: jobs.filter((job) => job.experience_level === 'entry').length },
+        { level: 'mid', count: jobs.filter((job) => job.experience_level === 'mid').length },
+        { level: 'senior', count: jobs.filter((job) => job.experience_level === 'senior').length },
+        { level: 'executive', count: jobs.filter((job) => job.experience_level === 'executive').length },
+      ],
+      skills_gap,
+      applications_count: applications.length,
     });
   } catch (error) {
     logger.error('Error fetching job market analytics:', error);
-    throw error;
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

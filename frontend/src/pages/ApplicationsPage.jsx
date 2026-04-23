@@ -14,17 +14,16 @@ const ApplicationsPage = () => {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const getJobId = (application) =>
+    application.job_id?._id || application.job_id?.id || application.job_id;
+
   useEffect(() => {
     const fetchApplications = async () => {
       try {
-        const response = await apiServerClient.fetch('/apply-job', {
+        const applicationsData = await apiServerClient.fetch('/apply-job', {
           headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         });
-
-        if (response.ok) {
-          const applicationsData = await response.json();
-          setApplications(applicationsData);
-        }
+        setApplications(applicationsData);
       } catch (error) {
         console.error("Error fetching applications:", error);
       } finally {
@@ -71,7 +70,7 @@ const ApplicationsPage = () => {
                     </div>
                     <div>
                       <h3 className="text-xl font-semibold mb-1">
-                        <Link to={`/job/${app.job_id}`} className="hover:text-primary transition-colors">
+                        <Link to={`/job/${getJobId(app)}`} className="hover:text-primary transition-colors">
                           {app.job_id?.title || 'Unknown Job'}
                         </Link>
                       </h3>
@@ -87,7 +86,7 @@ const ApplicationsPage = () => {
                       {app.status}
                     </Badge>
                     <Button variant="ghost" size="sm" asChild className="hidden md:flex">
-                      <Link to={`/job/${app.job_id}`}>View Job <ArrowRight size={16} className="ml-2" /></Link>
+                      <Link to={`/job/${getJobId(app)}`}>View Job <ArrowRight size={16} className="ml-2" /></Link>
                     </Button>
                   </div>
                 </div>

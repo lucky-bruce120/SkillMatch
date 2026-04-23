@@ -1,5 +1,7 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext.jsx';
+import apiServerClient from '@/lib/apiServerClient.js';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,12 +10,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Download, BookOpen, Map, CheckCircle2, AlertCircle, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Simple SVG Circular Progress Component
 const CircularProgress = ({ value, size = 120, strokeWidth = 10 }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const offset = circumference - (value / 100) * circumference;
-  
+
   const getColor = (val) => {
     if (val >= 80) return 'text-green-500';
     if (val >= 60) return 'text-yellow-500';
@@ -53,33 +54,29 @@ const CircularProgress = ({ value, size = 120, strokeWidth = 10 }) => {
 
 const CVAnalysisResultsPage = () => {
   const { id } = useParams();
+  const { currentUser } = useAuth();
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchAnalysis = async () => {
       try {
-        const record = await pb.collection('cv_analysis').getOne(id, { $autoCancel: false });
-        
-        // Parse JSON strings if they are stored as strings
-        const parsedRecord = {
-          ...record,
-          extracted_skills: typeof record.extracted_skills === 'string' ? JSON.parse(record.extracted_skills || '[]') : record.extracted_skills,
-          missing_skills: typeof record.missing_skills === 'string' ? JSON.parse(record.missing_skills || '[]') : record.missing_skills,
-          suggestions: typeof record.suggestions === 'string' ? JSON.parse(record.suggestions || '[]') : record.suggestions,
-        };
-        
-        setAnalysis(parsedRecord);
+        const record = await apiServerClient.fetch(`/cv/${id}`, {
+          headers: { Authorization: `Bearer ${currentUser?.token}` }
+        });
+        setAnalysis(record);
       } catch (error) {
-        console.error("Error fetching analysis:", error);
-        toast.error("Failed to load analysis results");
+        console.error('Error fetching analysis:', error);
+        toast.error('Failed to load analysis results');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAnalysis();
-  }, [id]);
+    if (currentUser?.token) {
+      fetchAnalysis();
+    }
+  }, [id, currentUser]);
 
   if (loading) {
     return (
@@ -115,18 +112,16 @@ const CVAnalysisResultsPage = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {/* Score Card */}
         <Card className="md:col-span-1 flex flex-col items-center justify-center p-6 text-center">
           <h3 className="font-semibold text-lg mb-6">Overall Resume Score</h3>
           <CircularProgress value={analysis.cv_score || 0} size={160} strokeWidth={12} />
           <p className="text-sm text-muted-foreground mt-6">
-            {analysis.cv_score >= 80 ? "Excellent! Your resume is highly competitive." : 
-             analysis.cv_score >= 60 ? "Good, but there's room for improvement." : 
-             "Needs significant updates to pass ATS systems."}
+            {analysis.cv_score >= 80 ? 'Excellent! Your resume is highly competitive.' :
+             analysis.cv_score >= 60 ? "Good, but there's room for improvement." :
+             'Needs significant updates to pass ATS systems.'}
           </p>
         </Card>
 
-        {/* Summary Card */}
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -135,9 +130,9 @@ const CVAnalysisResultsPage = () => {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
-              {analysis.analysis_text || "Your resume has been analyzed against industry standards. Review the extracted skills and suggestions below to improve your chances of landing interviews."}
+              {analysis.analysis_text || 'Your resume has been analyzed against industry standards. Review the extracted skills and suggestions below to improve your chances of landing interviews.'}
             </p>
-            
+
             <div className="mt-8 flex flex-wrap gap-4">
               <Button asChild>
                 <Link to={`/course-recommendations?skills=${(analysis.missing_skills || []).join(',')}`}>
@@ -155,7 +150,6 @@ const CVAnalysisResultsPage = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* Extracted Skills */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -177,7 +171,6 @@ const CVAnalysisResultsPage = () => {
           </CardContent>
         </Card>
 
-        {/* Missing Skills */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -200,7 +193,6 @@ const CVAnalysisResultsPage = () => {
         </Card>
       </div>
 
-      {/* Suggestions */}
       <Card>
         <CardHeader>
           <CardTitle>Actionable Suggestions</CardTitle>

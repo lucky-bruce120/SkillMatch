@@ -19,6 +19,7 @@ import cvUploadAnalyzeRouter from './cv-upload-analyze.js';
 import jobRecommendationsV2Router from './job-recommendations-v2.js';
 import bookmarkedCoursesRouter from './bookmarked-courses.js';
 import savedJobsRouter from './saved-jobs.js';
+import adminRouter from './admin.js';
 
 const router = Router();
 
@@ -34,6 +35,7 @@ export default () => {
   router.use('/courses', coursesRouter);
   router.use('/bookmarked-courses', bookmarkedCoursesRouter);
   router.use('/saved-jobs', savedJobsRouter);
+  router.use('/admin', adminRouter);
   router.use('/job-market', jobMarketRouter);
   router.use('/interview-prep', interviewPrepRouter);
   router.use('/cv-analyze', cvAnalyzeRouter);

@@ -15,10 +15,9 @@ const ManageJobsPage = () => {
 
   const fetchJobs = async () => {
     try {
-      const response = await apiServerClient.fetch('/employer/jobs', {
+      const jobsData = await apiServerClient.fetch('/employer/jobs', {
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-      const jobsData = await response.json();
       setJobs(jobsData);
     } catch (error) {
       console.error("Error fetching jobs:", error);
@@ -40,7 +39,7 @@ const ManageJobsPage = () => {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-      setJobs(jobs.filter(j => j._id !== id));
+      setJobs(jobs.filter(j => (j._id || j.id) !== id));
       toast.success("Job deleted successfully");
     } catch (error) {
       toast.error("Failed to delete job");

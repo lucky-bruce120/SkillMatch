@@ -12,6 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { FileText, Sparkles, Check, X, Download, Loader2, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 
+const statusLabel = {
+  pending: 'Pending',
+  reviewed: 'Reviewed',
+  accepted: 'Accepted',
+  rejected: 'Rejected',
+};
+
 const EmployerApplicationDashboard = () => {
   const { currentUser } = useAuth();
   const [applications, setApplications] = useState([]);
@@ -31,10 +38,9 @@ const EmployerApplicationDashboard = () => {
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      const response = await apiServerClient.fetch('/employer/applications', {
+      const applicationsData = await apiServerClient.fetch('/employer/applications', {
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-      const applicationsData = await response.json();
       setApplications(applicationsData);
     } catch (error) {
       console.error("Error fetching applications:", error);
@@ -47,15 +53,16 @@ const EmployerApplicationDashboard = () => {
   const handleAnalyzeCV = async (app) => {
     setProcessing(true);
     try {
-      const response = await apiServerClient.fetch('/analyze-candidate', {
+      const data = await apiServerClient.fetch('/analyze-candidate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.token}`
+        },
         body: JSON.stringify({
-          applicationId: app.id,
-          cvFileId: app.cv_file || 'dummy'
+          applicationId: app._id || app.id
         })
       });
-      const data = await response.json();
       if (data.success) {
         setAnalysisResult(data.analysis);
         toast.success("CV Analyzed successfully");
@@ -78,20 +85,28 @@ const EmployerApplicationDashboard = () => {
   const handleStatusUpdate = async () => {
     setProcessing(true);
     try {
-      const response = await apiServerClient.fetch('/application-response', {
+      const normalizedStatus = feedbackData.status.toLowerCase() === 'approved'
+        ? 'accepted'
+        : feedbackData.status.toLowerCase() === 'applied'
+          ? 'pending'
+          : feedbackData.status.toLowerCase();
+
+      const data = await apiServerClient.fetch('/application-response', {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` },
+        headers: {
+          'Authorization': `Bearer ${currentUser?.token}`,
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({
           applicationId: selectedApp._id,
-          status: feedbackData.status,
+          status: normalizedStatus,
           feedback: feedbackData.feedback
         })
       });
-      
-      const data = await response.json();
       if (data.success) {
-        setApplications(apps => apps.map(a => a._id === selectedApp._id ? { ...a, status: feedbackData.status, employer_feedback: feedbackData.feedback } : a));
-        toast.success(`Application marked as ${feedbackData.status}`);
+        setApplications(apps => apps.map(a => a._id === selectedApp._id ? { ...a, status: normalizedStatus, feedback: feedbackData.feedback } : a));
+        setSelectedApp((app) => app ? { ...app, status: normalizedStatus, feedback: feedbackData.feedback } : app);
+        toast.success(`Application marked as ${normalizedStatus}`);
         setFeedbackModalOpen(false);
         setSelectedApp(null);
       } else {
@@ -104,7 +119,7 @@ const EmployerApplicationDashboard = () => {
     }
   };
 
-  const filteredApps = filter === 'all' ? applications : applications.filter(a => a.status.toLowerCase() === filter.toLowerCase());
+  const filteredApps = filter === 'all' ? applications : applications.filter(a => a.status?.toLowerCase() === filter.toLowerCase());
 
   if (loading) {
     return <div className="container mx-auto px-4 py-8"><Skeleton className="h-96 w-full" /></div>;
@@ -123,10 +138,10 @@ const EmployerApplicationDashboard = () => {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Applications</SelectItem>
-            <SelectItem value="applied">New (Applied)</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="pending">New (Pending)</SelectItem>
+            <SelectItem value="accepted">Accepted</SelectItem>
+            <SelectItem value="reviewed">Reviewed</SelectItem>
             <SelectItem value="rejected">Rejected</SelectItem>
-            <SelectItem value="hired">Hired</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -145,11 +160,11 @@ const EmployerApplicationDashboard = () => {
                   <div className="flex justify-between items-start mb-2">
                     <h4 className="font-bold truncate pr-2">{app.job_seeker_id?.email || 'Candidate'}</h4>
                     <Badge variant="outline" className={
-                      app.status === 'Applied' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                      app.status === 'Approved' ? 'bg-green-50 text-green-700 border-green-200' :
-                      app.status === 'Rejected' ? 'bg-red-50 text-red-700 border-red-200' :
+                      app.status === 'pending' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                      app.status === 'accepted' ? 'bg-green-50 text-green-700 border-green-200' :
+                      app.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
                       'bg-gray-50 text-gray-700 border-gray-200'
-                    }>{app.status}</Badge>
+                    }>{statusLabel[app.status] || app.status}</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground truncate">{app.job_id?.title}</p>
                   <p className="text-xs text-muted-foreground mt-2">{new Date(app.applied_at).toLocaleDateString()}</p>
@@ -174,12 +189,12 @@ const EmployerApplicationDashboard = () => {
                     <CardDescription className="text-base">Applied for: <span className="font-medium text-foreground">{selectedApp.job_id?.title}</span></CardDescription>
                   </div>
                   <div className="flex gap-2">
-                    {selectedApp.status === 'Applied' && (
+                    {selectedApp.status === 'pending' && (
                       <>
-                        <Button size="sm" variant="outline" className="text-green-600 hover:bg-green-50 hover:text-green-700 border-green-200" onClick={() => openFeedbackModal(selectedApp, 'Approved')}>
+                        <Button size="sm" variant="outline" className="text-green-600 hover:bg-green-50 hover:text-green-700 border-green-200" onClick={() => openFeedbackModal(selectedApp, 'accepted')}>
                           <Check className="mr-1 h-4 w-4" /> Approve
                         </Button>
-                        <Button size="sm" variant="outline" className="text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200" onClick={() => openFeedbackModal(selectedApp, 'Rejected')}>
+                        <Button size="sm" variant="outline" className="text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200" onClick={() => openFeedbackModal(selectedApp, 'rejected')}>
                           <X className="mr-1 h-4 w-4" /> Reject
                         </Button>
                       </>
@@ -201,9 +216,17 @@ const EmployerApplicationDashboard = () => {
 
                 {/* CV Actions */}
                 <div className="flex flex-wrap gap-4 p-4 border rounded-xl bg-card">
-                  <Button variant="secondary" className="flex-1">
-                    <Download className="mr-2 h-4 w-4" /> Download CV
-                  </Button>
+                  {selectedApp.job_seeker_id?.profile?.cv ? (
+                    <Button variant="secondary" className="flex-1" asChild>
+                      <a href={`${apiServerClient.baseUrl}${selectedApp.job_seeker_id.profile.cv}`} target="_blank" rel="noreferrer">
+                        <Download className="mr-2 h-4 w-4" /> Download CV
+                      </a>
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" className="flex-1" disabled>
+                      <Download className="mr-2 h-4 w-4" /> CV Unavailable
+                    </Button>
+                  )}
                   <Button className="flex-1" onClick={() => handleAnalyzeCV(selectedApp)} disabled={processing}>
                     {processing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                     AI CV Analysis

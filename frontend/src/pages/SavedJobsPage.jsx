@@ -20,22 +20,15 @@ const SavedJobsPage = () => {
 
   const fetchSavedJobs = async () => {
     try {
-      const response = await apiServerClient.fetch('/saved-jobs', {
+      const savedJobs = await apiServerClient.fetch('/saved-jobs', {
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-
-      if (response.ok) {
-        const savedJobs = await response.json();
-
-        // Transform the data to match expected format
-        const jobs = savedJobs.map(item => ({
-          ...item.job,
-          savedRecordId: item.id,
-          savedAt: item.created
-        }));
-
-        setSavedJobs(jobs);
-      }
+      const jobs = savedJobs.map(item => ({
+        ...item.job,
+        savedRecordId: item.id,
+        savedAt: item.created
+      }));
+      setSavedJobs(jobs);
     } catch (error) {
       console.error("Error fetching saved jobs:", error);
     } finally {
@@ -45,17 +38,12 @@ const SavedJobsPage = () => {
 
   const handleRemoveSaved = async (jobId) => {
     try {
-      const response = await apiServerClient.fetch(`/saved-jobs/${jobId}`, {
+      await apiServerClient.fetch(`/saved-jobs/${jobId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-
-      if (response.ok) {
-        setSavedJobs(savedJobs.filter(j => j.id !== jobId));
-        toast.success("Removed from saved jobs");
-      } else {
-        toast.error("Failed to remove job");
-      }
+      setSavedJobs(savedJobs.filter(j => j.id !== jobId));
+      toast.success("Removed from saved jobs");
     } catch (error) {
       toast.error("Failed to remove job");
     }

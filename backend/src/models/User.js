@@ -17,10 +17,18 @@ const userSchema = new mongoose.Schema({
     enum: ['job_seeker', 'employer', 'admin'],
     required: true
   },
+  account_status: {
+    type: String,
+    enum: ['active', 'deactivated'],
+    default: 'active'
+  },
   emailVerified: {
     type: Boolean,
     default: false
   },
+  emailVerificationCode: String,
+  passwordResetToken: String,
+  passwordResetExpiry: Date,
   created: {
     type: Date,
     default: Date.now
@@ -29,6 +37,11 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
+});
+
+userSchema.pre('save', function(next) {
+  this.updated = Date.now();
+  next();
 });
 
 export default mongoose.model('User', userSchema);

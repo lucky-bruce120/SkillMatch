@@ -1,4 +1,6 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext.jsx';
+import apiServerClient from '@/lib/apiServerClient.js';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -6,36 +8,40 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 const UserManagementPage = () => {
+  const { currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchUsers = async () => {
     try {
-      const result = await pb.collection('users').getList(1, 50, {
-        sort: '-created',
-        $autoCancel: false
+      const result = await apiServerClient.fetch('/admin/users', {
+        headers: { Authorization: `Bearer ${currentUser?.token}` }
       });
-      setUsers(result.items);
+      setUsers(result);
     } catch (error) {
-      console.error("Error fetching users:", error);
-      toast.error("Failed to load users");
+      console.error('Error fetching users:', error);
+      toast.error('Failed to load users');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    if (currentUser) fetchUsers();
+  }, [currentUser]);
 
   const toggleStatus = async (user) => {
     const newStatus = user.account_status === 'active' ? 'deactivated' : 'active';
     try {
-      await pb.collection('users').update(user.id, { account_status: newStatus }, { $autoCancel: false });
-      setUsers(users.map(u => u.id === user.id ? { ...u, account_status: newStatus } : u));
+      await apiServerClient.fetch(`/admin/users/${user._id || user.id}/status`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${currentUser?.token}` },
+        body: JSON.stringify({ account_status: newStatus })
+      });
+      setUsers(users.map((item) => ((item.id === user.id || item._id === user._id) ? { ...item, account_status: newStatus } : item)));
       toast.success(`User ${newStatus}`);
     } catch (error) {
-      toast.error("Failed to update user status");
+      toast.error('Failed to update user status');
     }
   };
 
@@ -62,7 +68,6 @@ const UserManagementPage = () => {
           <thead>
             <tr>
               <th>Email</th>
-              <th>Name</th>
               <th>Role</th>
               <th>Status</th>
               <th>Joined</th>
@@ -71,9 +76,8 @@ const UserManagementPage = () => {
           </thead>
           <tbody>
             {users.map((user) => (
-              <tr key={user.id}>
+              <tr key={user._id || user.id}>
                 <td className="font-medium">{user.email}</td>
-                <td>{user.name || '-'}</td>
                 <td>
                   <Badge variant="outline">{user.role}</Badge>
                 </td>
@@ -84,9 +88,9 @@ const UserManagementPage = () => {
                 </td>
                 <td>{new Date(user.created).toLocaleDateString()}</td>
                 <td className="text-right space-x-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => toggleStatus(user)}
                     className={user.account_status === 'active' ? 'text-destructive hover:bg-destructive/10' : 'text-green-600 hover:bg-green-50'}
                   >

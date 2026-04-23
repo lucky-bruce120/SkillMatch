@@ -1,7 +1,8 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '@/contexts/AuthContext.jsx';
+import apiServerClient from '@/lib/apiServerClient.js';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,23 +21,19 @@ const SkillGapAnalysisPage = () => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const skillsData = await pb.collection('skills').getFullList({
-          filter: `job_seeker_id="${currentUser.id}"`,
-          $autoCancel: false
+        const skillsData = await apiServerClient.fetch('/profile/skills', {
+          headers: { Authorization: `Bearer ${currentUser?.token}` }
         });
-        setUserSkills(skillsData.map(s => ({ name: s.skill_name.toLowerCase(), level: s.proficiency_level })));
+        setUserSkills(skillsData.map((skill) => ({ name: skill.skill_name.toLowerCase(), level: skill.proficiency_level })));
 
-        const jobsData = await pb.collection('jobs').getList(1, 20, {
-          sort: '-created',
-          $autoCancel: false
-        });
-        setJobs(jobsData.items);
-        
-        if (jobsData.items.length > 0) {
-          setSelectedJobId(jobsData.items[0].id);
+        const jobsData = await apiServerClient.fetch('/jobs/search');
+        setJobs(jobsData);
+
+        if (jobsData.length > 0) {
+          setSelectedJobId(jobsData[0].id || jobsData[0]._id);
         }
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
@@ -48,20 +45,22 @@ const SkillGapAnalysisPage = () => {
   useEffect(() => {
     if (!selectedJobId) return;
 
-    const job = jobs.find(j => j.id === selectedJobId);
+    const job = jobs.find((item) => (item.id || item._id) === selectedJobId);
     if (!job || !job.required_skills) return;
 
-    const requiredSkills = job.required_skills.split(',').map(s => s.trim());
-    
+    const requiredSkills = (Array.isArray(job.required_skills) ? job.required_skills : String(job.required_skills).split(','))
+      .map((skill) => String(skill).trim())
+      .filter(Boolean);
+
     const matched = [];
     const missing = [];
 
-    requiredSkills.forEach(reqSkill => {
-      const userSkill = userSkills.find(us => reqSkill.toLowerCase().includes(us.name) || us.name.includes(reqSkill.toLowerCase()));
+    requiredSkills.forEach((requiredSkill) => {
+      const userSkill = userSkills.find((skill) => requiredSkill.toLowerCase().includes(skill.name) || skill.name.includes(requiredSkill.toLowerCase()));
       if (userSkill) {
-        matched.push({ name: reqSkill, userLevel: userSkill.level });
+        matched.push({ name: requiredSkill, userLevel: userSkill.level });
       } else {
-        missing.push({ name: reqSkill, estimatedTime: '2-4 weeks', demand: 'High' });
+        missing.push({ name: requiredSkill, estimatedTime: '2-4 weeks', demand: 'High' });
       }
     });
 
@@ -72,7 +71,6 @@ const SkillGapAnalysisPage = () => {
       missing,
       matchPercentage: Math.round((matched.length / requiredSkills.length) * 100) || 0
     });
-
   }, [selectedJobId, jobs, userSkills]);
 
   if (loading) {
@@ -100,8 +98,8 @@ const SkillGapAnalysisPage = () => {
               <SelectValue placeholder="Select a job to analyze" />
             </SelectTrigger>
             <SelectContent>
-              {jobs.map(job => (
-                <SelectItem key={job.id} value={job.id}>{job.title} at {job.company}</SelectItem>
+              {jobs.map((job) => (
+                <SelectItem key={job.id || job._id} value={job.id || job._id}>{job.title} at {job.company}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -133,8 +131,8 @@ const SkillGapAnalysisPage = () => {
                   </h3>
                   {analysis.matched.length > 0 ? (
                     <div className="space-y-4">
-                      {analysis.matched.map((skill, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-green-50/50 dark:bg-green-900/10 rounded-lg border border-green-100 dark:border-green-900/30">
+                      {analysis.matched.map((skill, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-green-50/50 rounded-lg border border-green-100">
                           <span className="font-medium">{skill.name}</span>
                           <Badge variant="outline" className="bg-background">{skill.userLevel}</Badge>
                         </div>
@@ -144,15 +142,15 @@ const SkillGapAnalysisPage = () => {
                     <p className="text-muted-foreground text-center py-8">No matching skills found.</p>
                   )}
                 </div>
-                
+
                 <div className="p-6">
                   <h3 className="font-semibold text-lg flex items-center gap-2 mb-6">
                     <XCircle className="text-destructive" /> Missing Skills ({analysis.missing.length})
                   </h3>
                   {analysis.missing.length > 0 ? (
                     <div className="space-y-4">
-                      {analysis.missing.map((skill, idx) => (
-                        <div key={idx} className="flex flex-col p-3 bg-red-50/50 dark:bg-red-900/10 rounded-lg border border-red-100 dark:border-red-900/30 gap-2">
+                      {analysis.missing.map((skill, index) => (
+                        <div key={index} className="flex flex-col p-3 bg-red-50/50 rounded-lg border border-red-100 gap-2">
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{skill.name}</span>
                             <Badge variant="destructive" className="bg-destructive/10 text-destructive hover:bg-destructive/20 border-none">Required</Badge>
@@ -174,7 +172,6 @@ const SkillGapAnalysisPage = () => {
 
           {analysis.missing.length > 0 && (
             <Card className="bg-primary text-primary-foreground overflow-hidden relative">
-              <div className="absolute right-0 top-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
               <CardContent className="p-8 flex flex-col sm:flex-row items-center justify-between gap-6 relative z-10">
                 <div className="flex items-center gap-4">
                   <div className="p-4 bg-white/20 rounded-2xl">
@@ -186,7 +183,7 @@ const SkillGapAnalysisPage = () => {
                   </div>
                 </div>
                 <Button asChild size="lg" variant="secondary" className="w-full sm:w-auto shrink-0 h-14 px-8 text-lg">
-                  <Link to={`/courses?skills=${analysis.missing.map(m => m.name).join(',')}`}>
+                  <Link to={`/courses?skills=${analysis.missing.map((missingSkill) => missingSkill.name).join(',')}`}>
                     Find Courses <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button>

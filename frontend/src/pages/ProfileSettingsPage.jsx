@@ -52,50 +52,42 @@ const ProfileSettingsPage = () => {
     fetchProfileData();
   }, [currentUser]);
 
+  const getProfileName = (profileRecord) => {
+    if (profileRecord?.full_name) return profileRecord.full_name;
+    return [profileRecord?.firstName, profileRecord?.lastName].filter(Boolean).join(' ');
+  };
+
   const fetchProfileData = async () => {
     setLoading(true);
     try {
       console.log('[PROFILE INIT] Fetching profile for user:', currentUser?.id);
 
       // Fetch profile from API
-      const profileResponse = await apiServerClient.fetch('/profile', {
+      const profileRecord = await apiServerClient.fetch('/profile', {
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
+      console.log('[PROFILE INIT] Found existing profile:', profileRecord._id);
 
-      if (profileResponse.ok) {
-        const profileRecord = await profileResponse.json();
-        console.log('[PROFILE INIT] Found existing profile:', profileRecord._id);
+      setProfile(profileRecord);
+      setFormData({
+        full_name: getProfileName(profileRecord) || '',
+        bio: profileRecord.bio || '',
+        location: profileRecord.location || '',
+        phone: profileRecord.phone || '',
+        date_of_birth: profileRecord.date_of_birth ? profileRecord.date_of_birth.split('T')[0] : '',
+        gender: profileRecord.gender || '',
+        nationality: profileRecord.nationality || '',
+        linkedin_url: profileRecord.linkedin_url || '',
+        portfolio_url: profileRecord.portfolio_url || '',
+        github_url: profileRecord.github_url || ''
+      });
 
-        setProfile(profileRecord);
-        setFormData({
-          full_name: profileRecord.firstName + ' ' + profileRecord.lastName || '',
-          bio: profileRecord.bio || '',
-          location: profileRecord.location || '',
-          phone: profileRecord.phone || '',
-          date_of_birth: profileRecord.date_of_birth ? profileRecord.date_of_birth.split('T')[0] : '',
-          gender: profileRecord.gender || '',
-          nationality: profileRecord.nationality || '',
-          linkedin_url: profileRecord.linkedin_url || '',
-          portfolio_url: profileRecord.portfolio_url || '',
-          github_url: profileRecord.github_url || ''
-        });
-
-        if (profileRecord.picture) {
-          setPicPreview(`${import.meta.env.VITE_API_SERVER_URL}${profileRecord.picture}`);
-        }
-      } else {
-        // Profile doesn't exist, create empty profile
-        console.log('[PROFILE INIT] No profile found, will create on save');
-        setProfile(null);
-        setFormData({
-          full_name: currentUser?.name || '',
-          bio: '', location: '', phone: '', date_of_birth: '', gender: '', nationality: '',
-          linkedin_url: '', portfolio_url: '', github_url: ''
-        });
+      if (profileRecord.picture) {
+        setPicPreview(`${import.meta.env.VITE_API_SERVER_URL}${profileRecord.picture}`);
       }
 
       // Fetch skills, education, experience from API
-      const [skillsResponse, eduResponse, expResponse] = await Promise.all([
+      const [skillsData, eduData, expData] = await Promise.all([
         apiServerClient.fetch('/profile/skills', {
           headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         }),
@@ -106,27 +98,25 @@ const ProfileSettingsPage = () => {
           headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         })
       ]);
-
-      if (skillsResponse.ok) {
-        const skillsData = await skillsResponse.json();
-        setSkills(skillsData);
-      }
-
-      if (eduResponse.ok) {
-        const eduData = await eduResponse.json();
-        setEducation(eduData);
-      }
-
-      if (expResponse.ok) {
-        const expData = await expResponse.json();
-        setExperience(expData);
-      }
+      setSkills(skillsData);
+      setEducation(eduData);
+      setExperience(expData);
 
       // Calculate profile strength
-      calculateAndSaveStrength(profile, skills, education, experience);
+      calculateAndSaveStrength(profileRecord, skillsData, eduData, expData);
     } catch (error) {
       console.error('[PROFILE INIT] Error:', error);
-      setUpdateError('Failed to load profile data');
+      console.log('[PROFILE INIT] No profile found, will create on save');
+      setProfile(null);
+      setFormData({
+        full_name: currentUser?.name || '',
+        bio: '', location: '', phone: '', date_of_birth: '', gender: '', nationality: '',
+        linkedin_url: '', portfolio_url: '', github_url: ''
+      });
+      setSkills([]);
+      setEducation([]);
+      setExperience([]);
+      setUpdateError(error.status === 404 ? null : 'Failed to load profile data');
     } finally {
       setLoading(false);
     }
@@ -179,7 +169,7 @@ const ProfileSettingsPage = () => {
 
       console.log('[PROFILE UPDATE] Payload being sent to API:', dataToSave);
 
-      const response = await apiServerClient.fetch('/profile', {
+      const updated = await apiServerClient.fetch('/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -187,13 +177,6 @@ const ProfileSettingsPage = () => {
         },
         body: JSON.stringify(dataToSave)
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update profile');
-      }
-
-      const updated = await response.json();
 
       console.log('[PROFILE UPDATE] Success! Response:', updated);
       setProfile(updated);
@@ -251,18 +234,11 @@ const ProfileSettingsPage = () => {
       formData.append('picture', file);
 
       console.log('[PIC UPLOAD] Sending FormData to API...');
-      const response = await apiServerClient.fetch('/profile/upload-picture', {
+      const updated = await apiServerClient.fetch('/profile/upload-picture', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${currentUser?.token}` },
         body: formData
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload picture');
-      }
-
-      const updated = await response.json();
 
       console.log('[PIC UPLOAD] Success! Response:', updated);
       setProfile(updated);
@@ -285,17 +261,10 @@ const ProfileSettingsPage = () => {
   const handleRemovePic = async () => {
     setUploadingPic(true);
     try {
-      const response = await apiServerClient.fetch('/profile/remove-picture', {
+      const updated = await apiServerClient.fetch('/profile/remove-picture', {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to remove picture');
-      }
-
-      const updated = await response.json();
       setProfile(updated);
       setPicPreview(null);
       calculateAndSaveStrength(updated, skills, education, experience);
@@ -349,18 +318,11 @@ const ProfileSettingsPage = () => {
     setSaving(true);
     try {
       console.log('[CV UPLOAD] Sending FormData to API...');
-      const response = await apiServerClient.fetch('/profile/upload-cv', {
+      const updated = await apiServerClient.fetch('/profile/upload-cv', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${currentUser?.token}` },
         body: formData
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload CV');
-      }
-
-      const updated = await response.json();
 
       console.log('[CV UPLOAD] Success! Response:', updated);
       setProfile(updated);
@@ -394,7 +356,7 @@ const ProfileSettingsPage = () => {
 
       let updatedExps;
       if (data.id) {
-        const response = await apiServerClient.fetch(`/profile/experience/${data.id}`, {
+        const updated = await apiServerClient.fetch(`/profile/experience/${data.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -402,17 +364,10 @@ const ProfileSettingsPage = () => {
           },
           body: JSON.stringify(dataToSave)
         });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to update experience');
-        }
-
-        const updated = await response.json();
         updatedExps = experience.map(e => e.id === data.id ? updated : e);
         toast.success("Experience updated");
       } else {
-        const response = await apiServerClient.fetch('/profile/experience', {
+        const added = await apiServerClient.fetch('/profile/experience', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -420,13 +375,6 @@ const ProfileSettingsPage = () => {
           },
           body: JSON.stringify(dataToSave)
         });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to add experience');
-        }
-
-        const added = await response.json();
         updatedExps = [added, ...experience].sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
         toast.success("Experience added");
       }
@@ -441,15 +389,10 @@ const ProfileSettingsPage = () => {
 
   const handleDeleteExperience = async (id) => {
     try {
-      const response = await apiServerClient.fetch(`/profile/experience/${id}`, {
+      await apiServerClient.fetch(`/profile/experience/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete experience');
-      }
 
       const newExps = experience.filter(e => e.id !== id);
       setExperience(newExps);
@@ -467,7 +410,7 @@ const ProfileSettingsPage = () => {
     try {
       let updatedSkills;
       if (data.id) {
-        const response = await apiServerClient.fetch(`/profile/skills/${data.id}`, {
+        const updated = await apiServerClient.fetch(`/profile/skills/${data.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -475,17 +418,10 @@ const ProfileSettingsPage = () => {
           },
           body: JSON.stringify(data)
         });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to update skill');
-        }
-
-        const updated = await response.json();
         updatedSkills = skills.map(s => s.id === data.id ? updated : s);
         toast.success("Skill updated");
       } else {
-        const response = await apiServerClient.fetch('/profile/skills', {
+        const added = await apiServerClient.fetch('/profile/skills', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -493,13 +429,6 @@ const ProfileSettingsPage = () => {
           },
           body: JSON.stringify(data)
         });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to add skill');
-        }
-
-        const added = await response.json();
         updatedSkills = [...skills, added];
         toast.success("Skill added");
       }
@@ -514,15 +443,10 @@ const ProfileSettingsPage = () => {
 
   const handleDeleteSkill = async (id) => {
     try {
-      const response = await apiServerClient.fetch(`/profile/skills/${id}`, {
+      await apiServerClient.fetch(`/profile/skills/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete skill');
-      }
 
       const newSkills = skills.filter(s => s.id !== id);
       setSkills(newSkills);
@@ -544,7 +468,7 @@ const ProfileSettingsPage = () => {
 
       let updatedEdus;
       if (data.id) {
-        const response = await apiServerClient.fetch(`/profile/education/${data.id}`, {
+        const updated = await apiServerClient.fetch(`/profile/education/${data.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -552,17 +476,10 @@ const ProfileSettingsPage = () => {
           },
           body: JSON.stringify(dataToSave)
         });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to update education');
-        }
-
-        const updated = await response.json();
         updatedEdus = education.map(e => e.id === data.id ? updated : e);
         toast.success("Education updated");
       } else {
-        const response = await apiServerClient.fetch('/profile/education', {
+        const added = await apiServerClient.fetch('/profile/education', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -570,13 +487,6 @@ const ProfileSettingsPage = () => {
           },
           body: JSON.stringify(dataToSave)
         });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to add education');
-        }
-
-        const added = await response.json();
         updatedEdus = [added, ...education].sort((a, b) => new Date(b.start_date || 0) - new Date(a.start_date || 0));
         toast.success("Education added");
       }
@@ -591,15 +501,10 @@ const ProfileSettingsPage = () => {
 
   const handleDeleteEducation = async (id) => {
     try {
-      const response = await apiServerClient.fetch(`/profile/education/${id}`, {
+      await apiServerClient.fetch(`/profile/education/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete education');
-      }
 
       const newEdus = education.filter(e => e.id !== id);
       setEducation(newEdus);

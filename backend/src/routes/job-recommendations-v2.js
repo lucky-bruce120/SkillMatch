@@ -19,15 +19,15 @@ router.post('/', authMiddleware, async (req, res) => {
     const userSkills = skills.map(s => s.trim().toLowerCase());
 
     // Fetch all published jobs from MongoDB
-    const jobs = await Job.find().limit(100);
+    const jobs = await Job.find({ status: 'active' }).limit(100);
 
     // Calculate match score for each job
     const jobsWithScores = jobs
       .map(job => {
         let matchScore = 0;
 
-        if (job.skills && job.skills.length > 0) {
-          const requiredSkills = job.skills.map(s => s.toLowerCase());
+        if (job.required_skills && job.required_skills.length > 0) {
+          const requiredSkills = job.required_skills.map(s => String(s).toLowerCase());
 
           // Calculate percentage of user skills that match job requirements
           const matchedSkillsCount = requiredSkills.filter(skill =>
@@ -43,12 +43,16 @@ router.post('/', authMiddleware, async (req, res) => {
         return {
           id: job._id,
           title: job.title,
+          company: job.company,
           location: job.location,
           salary: job.salary,
+          salaryMin: job.salary_min,
+          salaryMax: job.salary_max,
           description: job.description,
           matchScore: Math.round(matchScore),
           jobType: job.jobType,
           remoteType: job.remoteType,
+          requiredSkills: job.required_skills,
         };
       })
       .sort((a, b) => b.matchScore - a.matchScore)

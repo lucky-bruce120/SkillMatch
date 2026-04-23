@@ -26,7 +26,7 @@ const JobCard = ({ job, matchScore, onSave, isSaved }) => {
         <div className="space-y-2 text-sm text-muted-foreground mb-4">
           <div className="flex items-center gap-2">
             <MapPin size={16} className="shrink-0" />
-            <span className="line-clamp-1">{job.location} ({job.remote_type})</span>
+            <span className="line-clamp-1">{job.location} ({job.remoteType || job.remote_type})</span>
           </div>
           <div className="flex items-center gap-2">
             <DollarSign size={16} className="shrink-0" />
@@ -34,7 +34,7 @@ const JobCard = ({ job, matchScore, onSave, isSaved }) => {
           </div>
           <div className="flex items-center gap-2">
             <Briefcase size={16} className="shrink-0" />
-            <span>{job.job_type}</span>
+            <span>{job.jobType || job.job_type}</span>
           </div>
           <div className="flex items-center gap-2">
             <Clock size={16} className="shrink-0" />
@@ -43,14 +43,14 @@ const JobCard = ({ job, matchScore, onSave, isSaved }) => {
         </div>
 
         <div className="flex flex-wrap gap-2 mt-4">
-          {job.required_skills?.split(',').slice(0, 3).map((skill, idx) => (
+          {(Array.isArray(job.required_skills) ? job.required_skills : String(job.required_skills || '').split(',').filter(Boolean)).slice(0, 3).map((skill, idx) => (
             <Badge key={idx} variant="outline" className="bg-muted/50">
-              {skill.trim()}
+              {String(skill).trim()}
             </Badge>
           ))}
-          {job.required_skills?.split(',').length > 3 && (
+          {(Array.isArray(job.required_skills) ? job.required_skills.length : String(job.required_skills || '').split(',').filter(Boolean).length) > 3 && (
             <Badge variant="outline" className="bg-muted/50">
-              +{job.required_skills.split(',').length - 3} more
+              +{(Array.isArray(job.required_skills) ? job.required_skills.length : String(job.required_skills || '').split(',').filter(Boolean).length) - 3} more
             </Badge>
           )}
         </div>

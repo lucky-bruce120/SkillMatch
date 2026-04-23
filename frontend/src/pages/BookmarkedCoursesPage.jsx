@@ -21,17 +21,10 @@ const BookmarkedCoursesPage = () => {
 
   const fetchBookmarks = async () => {
     try {
-      // Fetch bookmarks
-      const response = await apiServerClient.fetch('/bookmarked-courses', {
+      const bookmarks = await apiServerClient.fetch('/bookmarked-courses', {
         headers: { 'Authorization': `Bearer ${currentUser?.token}` }
       });
-
-      if (response.ok) {
-        const bookmarks = await response.json();
-        setBookmarks(bookmarks);
-      } else {
-        toast.error("Failed to load saved courses");
-      }
+      setBookmarks(bookmarks);
     } catch (error) {
       console.error("Error fetching bookmarks:", error);
       toast.error("Failed to load saved courses");
@@ -42,8 +35,11 @@ const BookmarkedCoursesPage = () => {
 
   const handleRemove = async (courseId, bookmarkId) => {
     try {
-      await apiServerClient.fetch(`/courses/bookmark/${courseId}`, { method: 'DELETE' });
-      setBookmarks(bookmarks.filter(b => b.id !== bookmarkId));
+      await apiServerClient.fetch(`/bookmarked-courses/${courseId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+      });
+      setBookmarks(bookmarks.filter(b => (b.id || b._id) !== bookmarkId));
       toast.success("Course removed from bookmarks");
     } catch (error) {
       toast.error("Failed to remove bookmark");
@@ -68,11 +64,11 @@ const BookmarkedCoursesPage = () => {
       {bookmarks.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {bookmarks.map(bookmark => {
-            const course = bookmark.course_id;
+            const course = bookmark.course || bookmark.course_id;
             if (!course) return null;
 
             return (
-              <Card key={bookmark._id} className="flex flex-col h-full transition-all hover:shadow-md group">
+              <Card key={bookmark._id || bookmark.id} className="flex flex-col h-full transition-all hover:shadow-md group">
                 <div className="h-32 bg-muted/50 flex items-center justify-center border-b relative overflow-hidden">
                   <BookOpen className="h-12 w-12 text-muted-foreground/30 group-hover:scale-110 transition-transform duration-300" />
                   <div className="absolute top-3 right-3">
@@ -117,7 +113,7 @@ const BookmarkedCoursesPage = () => {
                   <Button 
                     variant="outline" 
                     size="icon"
-                    onClick={() => handleRemove(course.id, bookmark.id)}
+                    onClick={() => handleRemove(course._id || course.id, bookmark.id || bookmark._id)}
                     className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/20"
                     title="Remove bookmark"
                   >

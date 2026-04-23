@@ -50,6 +50,22 @@ router.get('/search', async (req, res) => {
   }
 });
 
+// GET /jobs/:id
+router.get('/:id', async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id).populate('employer_id', 'email');
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    res.json(job);
+  } catch (error) {
+    logger.error('Job fetch error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /jobs/:jobId/apply
 router.post('/:jobId/apply', authMiddleware, async (req, res) => {
   try {
