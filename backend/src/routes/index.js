@@ -1,0 +1,48 @@
+import { Router } from 'express';
+import healthCheck from './health-check.js';
+import authRouter from './auth.js';
+import profileRouter from './profile.js';
+import jobsRouter from './jobs.js';
+import employerRouter from './employer.js';
+import matchingRouter from './matching.js';
+import notificationsRouter from './notifications.js';
+import cvRouter from './cv.js';
+import coursesRouter from './courses.js';
+import jobMarketRouter from './job-market.js';
+import interviewPrepRouter from './interview-prep.js';
+import cvAnalyzeRouter from './cv-analyze.js';
+import jobRecommendationsRouter from './job-recommendations.js';
+import applyJobRouter from './apply-job.js';
+import analyzeCandidateRouter from './analyze-candidates.js';
+import applicationResponseRouter from './application-response.js';
+import cvUploadAnalyzeRouter from './cv-upload-analyze.js';
+import jobRecommendationsV2Router from './job-recommendations-v2.js';
+import bookmarkedCoursesRouter from './bookmarked-courses.js';
+import savedJobsRouter from './saved-jobs.js';
+
+const router = Router();
+
+export default () => {
+  router.get('/health', healthCheck);
+  router.use('/auth', authRouter);
+  router.use('/profile', profileRouter);
+  router.use('/jobs', jobsRouter);
+  router.use('/employer', employerRouter);
+  router.use('/matching', matchingRouter);
+  router.use('/notifications', notificationsRouter);
+  router.use('/cv', cvRouter);
+  router.use('/courses', coursesRouter);
+  router.use('/bookmarked-courses', bookmarkedCoursesRouter);
+  router.use('/saved-jobs', savedJobsRouter);
+  router.use('/job-market', jobMarketRouter);
+  router.use('/interview-prep', interviewPrepRouter);
+  router.use('/cv-analyze', cvAnalyzeRouter);
+  router.use('/job-recommendations', jobRecommendationsRouter);
+  router.use('/apply-job', applyJobRouter);
+  router.use('/analyze-candidate', analyzeCandidateRouter);
+  router.use('/application-response', applicationResponseRouter);
+  router.use('/cv-upload-analyze', cvUploadAnalyzeRouter);
+  router.use('/job-recommendations-v2', jobRecommendationsV2Router);
+
+  return router;
+};

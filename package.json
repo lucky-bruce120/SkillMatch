@@ -1,0 +1,17 @@
+{
+  "name": "monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others --raw \"npm run dev --prefix frontend\" \"npm run dev --prefix backend\"",
+    "build": "concurrently --raw \"npm run build --prefix frontend\"",
+    "start": "concurrently --kill-others --raw \"npm run start --prefix frontend\" \"npm run start --prefix backend\"",
+    "lint": "concurrently --raw \"npm run lint --prefix frontend\" \"npm run lint --prefix backend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "mongoose": "^9.4.1"
+  }
+}
