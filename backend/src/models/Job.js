@@ -62,9 +62,8 @@ const jobSchema = new mongoose.Schema({
   }
 });
 
-jobSchema.pre('save', function(next) {
+jobSchema.pre('save', function () {
   this.updated = Date.now();
-  next();
 });
 
 export default mongoose.model('Job', jobSchema);

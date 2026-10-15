@@ -2,14 +2,13 @@ import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
 import pdfParse from 'pdf-parse';
-import OpenAI from 'openai';
 import CVAnalysis from '../models/CVAnalysis.js';
 import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
+import { getOpenAIClient } from '../utils/openaiClient.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const extractTextFromPDF = async (buffer) => {
   const data = await pdfParse(buffer);
@@ -81,6 +80,7 @@ router.post('/', authMiddleware, upload.single('cv'), async (req, res) => {
       return res.status(400).json({ error: 'Could not extract text from CV file' });
     }
 
+    const openai = getOpenAIClient();
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       temperature: 0.2,

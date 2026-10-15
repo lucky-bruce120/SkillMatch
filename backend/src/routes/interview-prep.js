@@ -3,6 +3,7 @@ import express from 'express';
 import InterviewTip from '../models/InterviewTip.js';
 import InterviewQuestion from '../models/InterviewQuestion.js';
 import logger from '../utils/logger.js';
+import { escapeRegex } from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -17,12 +18,12 @@ router.get('/:jobRole', async (req, res) => {
 
     // Fetch interview tips for the job role
     const tips = await InterviewTip.find({
-      job_role: { $regex: jobRole, $options: 'i' }
+      job_role: { $regex: escapeRegex(jobRole), $options: 'i' }
     });
 
     // Fetch interview questions for the job role
     const questions = await InterviewQuestion.find({
-      job_role: { $regex: jobRole, $options: 'i' }
+      job_role: { $regex: escapeRegex(jobRole), $options: 'i' }
     });
 
     res.json({

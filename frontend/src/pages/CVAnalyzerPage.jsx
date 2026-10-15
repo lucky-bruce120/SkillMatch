@@ -1,9 +1,9 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient';
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card.jsx';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card.jsx';
 import { Button } from '@/components/ui/button.jsx';
 import { Progress } from '@/components/ui/progress.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
@@ -138,7 +138,7 @@ const CVAnalyzerPage = () => {
 
   const fetchJobRecommendations = async (skills) => {
     try {
-      const response = await apiServerClient.fetch('/job-recommendations-v2', {
+      const response = await apiServerClient.fetch('/job-recommendations', {
         method: 'POST',
         headers: { Authorization: `Bearer ${currentUser?.token}` },
         body: JSON.stringify({ skills })

@@ -12,6 +12,7 @@ const applicationSchema = new mongoose.Schema({
     required: true
   },
   cover_letter: String,
+  feedback: String,
   status: {
     type: String,
     enum: ['pending', 'reviewed', 'accepted', 'rejected'],
@@ -27,9 +28,8 @@ const applicationSchema = new mongoose.Schema({
   }
 });
 
-applicationSchema.pre('save', function(next) {
+applicationSchema.pre('save', function () {
   this.updated = Date.now();
-  next();
 });
 
 export default mongoose.model('Application', applicationSchema);

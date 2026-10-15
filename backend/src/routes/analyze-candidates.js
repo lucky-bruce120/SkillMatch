@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express from 'express';
-import OpenAI from 'openai';
 import Application from '../models/Application.js';
 import JobSeekerProfile from '../models/JobSeekerProfile.js';
 import authMiddleware from '../middleware/auth.js';
@@ -8,9 +7,10 @@ import logger from '../utils/logger.js';
 import fs from 'fs';
 import path from 'path';
 import pdfParse from 'pdf-parse';
+import { getOpenAIClient } from '../utils/openaiClient.js';
+import { UPLOAD_DIR } from '../utils/paths.js';
 
 const router = express.Router();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const extractCvText = async (profile) => {
   if (!profile?.cv) {
@@ -18,7 +18,7 @@ const extractCvText = async (profile) => {
   }
 
   const relativePath = profile.cv.replace(/^\/+/, '');
-  const filepath = path.join(process.cwd(), relativePath);
+  const filepath = path.join(UPLOAD_DIR, relativePath);
   if (!fs.existsSync(filepath)) {
     return '';
   }
@@ -56,7 +56,8 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Candidate CV is missing or unreadable' });
     }
 
-    const completion = await openai.chat.completions.create({
+    const openai = getOpenAIClient();
+  const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       temperature: 0.2,
       response_format: { type: 'json_object' },

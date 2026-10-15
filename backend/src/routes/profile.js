@@ -5,10 +5,11 @@ import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
 import path from 'path';
 import fs from 'fs';
+import { UPLOAD_DIR } from '../utils/paths.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
-const uploadDir = path.join(process.cwd(), 'uploads');
+const uploadDir = UPLOAD_DIR;
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -370,7 +371,7 @@ router.get('/cv', authMiddleware, async (req, res) => {
     }
 
     const relativePath = profile.cv.replace(/^\/+/, '');
-    const filepath = path.join(process.cwd(), relativePath);
+    const filepath = path.join(UPLOAD_DIR, relativePath);
     if (!fs.existsSync(filepath)) {
       return res.status(404).json({ error: 'CV file not found on disk' });
     }
@@ -436,7 +437,7 @@ router.delete('/remove-picture', authMiddleware, async (req, res) => {
 
     if (profile.picture) {
       const relativePath = profile.picture.replace(/^\/+/, '');
-      const filepath = path.join(process.cwd(), relativePath);
+      const filepath = path.join(UPLOAD_DIR, relativePath);
       if (fs.existsSync(filepath)) {
         fs.unlinkSync(filepath);
       }

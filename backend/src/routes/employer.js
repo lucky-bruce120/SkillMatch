@@ -102,10 +102,6 @@ router.post('/jobs', authMiddleware, async (req, res) => {
       'Entry-level': 'entry',
       'Mid-level': 'mid',
       'Senior': 'senior',
-      'Executive': 'executive',
-      'Entry-level': 'entry',
-      'Mid-level': 'mid',
-      'Senior': 'senior',
       'Executive': 'executive'
     };
 
@@ -294,10 +290,11 @@ router.get('/dashboard/stats', authMiddleware, async (req, res) => {
       job_id: { $in: jobIds }
     });
 
-    // Get pending interview count (applications with status 'accepted' or similar)
+    // Get pending interview count. 'shortlisted' is not part of the
+    // Application.status enum, so only real statuses are counted here.
     const interviewCount = await Application.countDocuments({
       job_id: { $in: jobIds },
-      status: { $in: ['accepted', 'shortlisted'] }
+      status: 'accepted'
     });
 
     res.json({

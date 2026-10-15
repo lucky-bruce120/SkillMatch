@@ -38,13 +38,15 @@ router.put('/', authMiddleware, async (req, res) => {
     }
     await application.save();
 
-    // Get job seeker info
-    const jobSeeker = await JobSeekerProfile.findById(application.job_seeker_id);
+    // Get job seeker info.
+    // Note: application.job_seeker_id references User, so the profile is
+    // looked up by its user_id rather than by its own _id.
+    const jobSeeker = await JobSeekerProfile.findOne({ user_id: application.job_seeker_id });
     if (!jobSeeker) {
       return res.status(404).json({ error: 'Job seeker profile not found' });
     }
 
-    // Get user info to find user_id for notification
+    // Get user info to confirm the account still exists
     const user = await User.findById(jobSeeker.user_id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });

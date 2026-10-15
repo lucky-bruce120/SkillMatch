@@ -1,11 +1,10 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Bell, Briefcase, MessageSquare, Check, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
 import apiServerClient from '@/lib/apiServerClient.js';
 
 const NotificationsPage = () => {

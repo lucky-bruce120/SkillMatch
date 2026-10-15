@@ -1,6 +1,6 @@
 import logger from '../utils/logger.js';
 
-export const errorMiddleware = (err, req, res, next) => {
+export const errorMiddleware = (err, req, res, _next) => {
   logger.error('Error:', err);
   
   const status = err.status || 500;
@@ -11,5 +11,3 @@ export const errorMiddleware = (err, req, res, next) => {
     status
   });
 };
-
-export default errorMiddleware;

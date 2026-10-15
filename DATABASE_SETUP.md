@@ -9,10 +9,10 @@
   - CVAnalysis, InterviewQuestion, InterviewTip
   - Notification, Course, SavedJob, BookmarkedCourse
 - **Port**: 3001
-- **Routes**: 17 major API endpoints configured
+- **Routes**: 64 API endpoints across 16 routers
 
 ### Frontend (React + Vite)
-- **Port**: 3000
+- **Port**: 3002 in dev (`vite preview` uses 3000)
 - **API Integration**: Connected to backend via `VITE_API_SERVER_URL`
 - **UI Framework**: Shadcn + Tailwind CSS
 
@@ -36,7 +36,7 @@ Update these values in `backend/.env`:
 ```bash
 JWT_SECRET=generate-a-strong-random-string-min-32-chars
 OPENAI_API_KEY=sk-your-actual-openai-api-key
-CORS_ORIGIN=http://127.0.0.1:3000  # for development
+CORS_ORIGIN=http://localhost:3002,http://127.0.0.1:3002  # must match the Vite dev port
 ```
 
 ### 3. **Verify Frontend Configuration**
@@ -97,7 +97,7 @@ npm run lint
 ⚠️ **Current Issues to Fix:**
 - [ ] Move API keys to environment variables only (not in .env)
 - [ ] Set `NODE_ENV=development` for local, `production` for deployment
-- [ ] Restrict `CORS_ORIGIN` in production (not `*`)
+- [x] `CORS_ORIGIN` no longer accepts a wildcard (incompatible with `credentials: true`)
 - [ ] Use `.env.local` and add `.env` to `.gitignore`
 
 ## 📝 Next Steps
@@ -106,5 +106,12 @@ npm run lint
 2. Set strong JWT_SECRET
 3. Install dependencies: `npm install`
 4. Run: `npm run dev`
-5. Access frontend at `http://127.0.0.1:3000`
+5. Access frontend at `http://localhost:3002`
 6. API backend at `http://127.0.0.1:3001`
+
+## 🔁 Password Reset (development)
+
+No email provider is wired up yet. `POST /auth/forgot-password` logs the reset
+token to the backend console and also returns it in the response, and
+`ForgotPasswordPage` surfaces the resulting `/reset-password?token=...` link in
+the UI so the flow can be exercised locally.

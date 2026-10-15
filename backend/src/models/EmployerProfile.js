@@ -23,9 +23,8 @@ const employerProfileSchema = new mongoose.Schema({
   }
 });
 
-employerProfileSchema.pre('save', function(next) {
+employerProfileSchema.pre('save', function () {
   this.updated = Date.now();
-  next();
 });
 
 export default mongoose.model('EmployerProfile', employerProfileSchema);

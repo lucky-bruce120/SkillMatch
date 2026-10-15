@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '@/contexts/AuthContext.jsx';
@@ -14,14 +14,12 @@ const SavedJobsPage = () => {
   const [savedJobs, setSavedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchSavedJobs();
-  }, [currentUser]);
+  const token = currentUser?.token;
 
-  const fetchSavedJobs = async () => {
+  const fetchSavedJobs = useCallback(async () => {
     try {
       const savedJobs = await apiServerClient.fetch('/saved-jobs', {
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       const jobs = savedJobs.map(item => ({
         ...item.job,
@@ -34,7 +32,11 @@ const SavedJobsPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    fetchSavedJobs();
+  }, [token, fetchSavedJobs]);
 
   const handleRemoveSaved = async (jobId) => {
     try {

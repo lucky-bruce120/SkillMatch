@@ -21,9 +21,8 @@ const courseSchema = new mongoose.Schema({
   }
 });
 
-courseSchema.pre('save', function(next) {
+courseSchema.pre('save', function () {
   this.updated = Date.now();
-  next();
 });
 
 export default mongoose.model('Course', courseSchema);

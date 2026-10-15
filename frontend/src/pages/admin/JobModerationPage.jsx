@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient.js';
 
@@ -12,10 +12,12 @@ const JobModerationPage = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchJobs = async () => {
+  const token = currentUser?.token;
+
+  const fetchJobs = useCallback(async () => {
     try {
       const result = await apiServerClient.fetch('/admin/jobs', {
-        headers: { Authorization: `Bearer ${currentUser?.token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       setJobs(result);
     } catch (error) {
@@ -24,11 +26,11 @@ const JobModerationPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
-    if (currentUser) fetchJobs();
-  }, [currentUser]);
+    if (token) fetchJobs();
+  }, [token, fetchJobs]);
 
   const updateStatus = async (id, newStatus) => {
     try {

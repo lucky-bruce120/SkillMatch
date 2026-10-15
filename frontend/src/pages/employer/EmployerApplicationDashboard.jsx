@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 import apiServerClient from '@/lib/apiServerClient';
@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Sparkles, Check, X, Download, Loader2, Eye } from 'lucide-react';
+import { Sparkles, Check, X, Download, Loader2, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 
 const statusLabel = {
@@ -31,15 +31,13 @@ const EmployerApplicationDashboard = () => {
   const [processing, setProcessing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
 
-  useEffect(() => {
-    fetchApplications();
-  }, [currentUser]);
+  const token = currentUser?.token;
 
-  const fetchApplications = async () => {
+  const fetchApplications = useCallback(async () => {
     setLoading(true);
     try {
       const applicationsData = await apiServerClient.fetch('/employer/applications', {
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setApplications(applicationsData);
     } catch (error) {
@@ -48,7 +46,11 @@ const EmployerApplicationDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    fetchApplications();
+  }, [token, fetchApplications]);
 
   const handleAnalyzeCV = async (app) => {
     setProcessing(true);

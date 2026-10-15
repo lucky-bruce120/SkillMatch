@@ -9,6 +9,7 @@ import connectDB from './utils/database.js';
 import routes from './routes/index.js';
 import { errorMiddleware } from './middleware/index.js';
 import logger from './utils/logger.js';
+import { UPLOAD_DIR } from './utils/paths.js';
 
 
 const app = express();
@@ -24,9 +25,25 @@ const startServer = async () => {
     logger.error('Unhandled rejection at:', promise, 'reason:', reason);
   });
 
+  // Allowed CORS origins.
+  // CORS_ORIGIN may be a comma-separated list so that both the Vite dev server
+  // (3002) and the vite preview server (3000) work in development. When it is
+  // unset we fall back to the local dev origins rather than "*", because
+  // `credentials: true` is incompatible with a wildcard origin.
+  const allowedOrigins = (process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : ['http://localhost:3002', 'http://127.0.0.1:3002', 'http://localhost:3000', 'http://127.0.0.1:3000']);
+
   app.use(helmet());
   app.use(cors({
-    origin: process.env.CORS_ORIGIN,
+    origin(origin, callback) {
+      // Allow requests with no Origin header (curl, server-to-server, health checks).
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      logger.warn(`Blocked CORS request from origin: ${origin}`);
+      return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    },
     credentials: true,
   }));
   app.use(morgan('combined'));
@@ -34,7 +51,7 @@ const startServer = async () => {
   app.use(express.urlencoded({ extended: true }));
 
   // Serve static files from uploads directory
-  app.use('/uploads', express.static('uploads'));
+  app.use('/uploads', express.static(UPLOAD_DIR));
 
   app.use('/', routes());
   app.use(errorMiddleware);

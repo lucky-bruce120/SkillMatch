@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '@/contexts/AuthContext.jsx';
@@ -6,7 +6,7 @@ import apiServerClient from '@/lib/apiServerClient.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx';
-import { Bell, Check, Trash2, Briefcase, MessageSquare, Calendar } from 'lucide-react';
+import { Bell, Check, Trash2, Briefcase, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
@@ -16,11 +16,25 @@ const NotificationDropdown = ({ isOpen, onClose, onCountUpdate }) => {
   const [filter, setFilter] = useState('all');
   const dropdownRef = useRef(null);
 
+  const token = currentUser?.token;
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const result = await apiServerClient.fetch('/notifications', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNotifications(result);
+      onCountUpdate(result.filter((notification) => !notification.isRead).length);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  }, [token, onCountUpdate]);
+
   useEffect(() => {
-    if (isOpen && currentUser) {
+    if (isOpen && token) {
       fetchNotifications();
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, token, fetchNotifications]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -35,18 +49,6 @@ const NotificationDropdown = ({ isOpen, onClose, onCountUpdate }) => {
 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
-
-  const fetchNotifications = async () => {
-    try {
-      const result = await apiServerClient.fetch('/notifications', {
-        headers: { Authorization: `Bearer ${currentUser?.token}` }
-      });
-      setNotifications(result);
-      onCountUpdate(result.filter((notification) => !notification.isRead).length);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    }
-  };
 
   const markAsRead = async (id, e) => {
     e.stopPropagation();

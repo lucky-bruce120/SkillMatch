@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient';
 
@@ -23,6 +23,7 @@ const ProfileSettingsPage = () => {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [downloadingCV, setDownloadingCV] = useState(false);
   const [uploadingPic, setUploadingPic] = useState(false);
   const [updateError, setUpdateError] = useState(null);
   const [cvUploadError, setCvUploadError] = useState(null);
@@ -48,23 +49,48 @@ const ProfileSettingsPage = () => {
   const [eduModalOpen, setEduModalOpen] = useState(false);
   const [selectedEdu, setSelectedEdu] = useState(null);
 
+  const token = currentUser?.token;
+  const currentUserName = currentUser?.name;
+
   useEffect(() => {
     fetchProfileData();
-  }, [currentUser]);
+  }, [token, fetchProfileData]);
+
+  const calculateAndSaveStrength = useCallback(async (prof, sk, ed, ex) => {
+    if (!prof) return;
+    const fields = [
+      { name: 'Full Name', completed: !!prof.firstName && !!prof.lastName },
+      { name: 'Bio', completed: !!prof.bio },
+      { name: 'Location', completed: !!prof.location },
+      { name: 'Phone', completed: !!prof.phone },
+      { name: 'Resume/CV', completed: !!prof.cv },
+      { name: 'Skills', completed: sk.length > 0 },
+      { name: 'Experience', completed: ex.length > 0 },
+      { name: 'Education', completed: ed.length > 0 },
+      { name: 'LinkedIn', completed: !!prof.linkedin_url },
+      { name: 'Profile Picture', completed: !!prof.picture }
+    ];
+    const completedCount = fields.filter(f => f.completed).length;
+    const strength = Math.round((completedCount / fields.length) * 100);
+
+    // Profile strength is now calculated client-side only
+    // No need to save to backend as it's derived data
+    console.log(`[PROFILE STRENGTH] Calculated: ${strength}% (${completedCount}/${fields.length} fields)`);
+  }, []);
 
   const getProfileName = (profileRecord) => {
     if (profileRecord?.full_name) return profileRecord.full_name;
     return [profileRecord?.firstName, profileRecord?.lastName].filter(Boolean).join(' ');
   };
 
-  const fetchProfileData = async () => {
+  const fetchProfileData = useCallback(async () => {
     setLoading(true);
     try {
       console.log('[PROFILE INIT] Fetching profile for user:', currentUser?.id);
 
       // Fetch profile from API
       const profileRecord = await apiServerClient.fetch('/profile', {
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       console.log('[PROFILE INIT] Found existing profile:', profileRecord._id);
 
@@ -89,13 +115,13 @@ const ProfileSettingsPage = () => {
       // Fetch skills, education, experience from API
       const [skillsData, eduData, expData] = await Promise.all([
         apiServerClient.fetch('/profile/skills', {
-          headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+          headers: { 'Authorization': `Bearer ${token}` }
         }),
         apiServerClient.fetch('/profile/education', {
-          headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+          headers: { 'Authorization': `Bearer ${token}` }
         }),
         apiServerClient.fetch('/profile/experience', {
-          headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+          headers: { 'Authorization': `Bearer ${token}` }
         })
       ]);
       setSkills(skillsData);
@@ -109,7 +135,7 @@ const ProfileSettingsPage = () => {
       console.log('[PROFILE INIT] No profile found, will create on save');
       setProfile(null);
       setFormData({
-        full_name: currentUser?.name || '',
+        full_name: currentUserName || '',
         bio: '', location: '', phone: '', date_of_birth: '', gender: '', nationality: '',
         linkedin_url: '', portfolio_url: '', github_url: ''
       });
@@ -120,28 +146,7 @@ const ProfileSettingsPage = () => {
     } finally {
       setLoading(false);
     }
-  };
-  const calculateAndSaveStrength = async (prof, sk, ed, ex) => {
-    if (!prof) return;
-    const fields = [
-      { name: 'Full Name', completed: !!prof.firstName && !!prof.lastName },
-      { name: 'Bio', completed: !!prof.bio },
-      { name: 'Location', completed: !!prof.location },
-      { name: 'Phone', completed: !!prof.phone },
-      { name: 'Resume/CV', completed: !!prof.cv },
-      { name: 'Skills', completed: sk.length > 0 },
-      { name: 'Experience', completed: ex.length > 0 },
-      { name: 'Education', completed: ed.length > 0 },
-      { name: 'LinkedIn', completed: !!prof.linkedin_url },
-      { name: 'Profile Picture', completed: !!prof.picture }
-    ];
-    const completedCount = fields.filter(f => f.completed).length;
-    const strength = Math.round((completedCount / fields.length) * 100);
-
-    // Profile strength is now calculated client-side only
-    // No need to save to backend as it's derived data
-    console.log(`[PROFILE STRENGTH] Calculated: ${strength}% (${completedCount}/${fields.length} fields)`);
-  };
+  }, [token, currentUser?.id, currentUserName, calculateAndSaveStrength]);
 
   const handleProfileUpdate = async (e) => {
     if (e) e.preventDefault();
@@ -274,6 +279,44 @@ const ProfileSettingsPage = () => {
       toast.error("Failed to remove picture");
     } finally {
       setUploadingPic(false);
+    }
+  };
+
+  const handleCVDownload = async () => {
+    // GET /profile/cv is behind authMiddleware, so a plain <a href> would
+    // arrive without an Authorization header and always 401. Fetch it with
+    // the bearer token and save the resulting blob instead.
+    setDownloadingCV(true);
+    try {
+      const response = await fetch(`${apiServerClient.baseUrl}/profile/cv`, {
+        headers: { Authorization: `Bearer ${currentUser?.token}` },
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || 'Failed to download CV');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match ? match[1] : 'resume';
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success('CV downloaded');
+    } catch (error) {
+      console.error('CV download error:', error);
+      toast.error(error.message || 'Failed to download CV');
+    } finally {
+      setDownloadingCV(false);
     }
   };
 
@@ -828,10 +871,8 @@ const ProfileSettingsPage = () => {
                     <h3 className="font-semibold text-lg mb-1">Resume Uploaded</h3>
                     <p className="text-sm text-muted-foreground mb-6">Your CV is currently attached to your profile and ready for applications.</p>
                     <div className="flex flex-wrap justify-center gap-3">
-                      <Button variant="outline" asChild>
-                        <a href={`${apiServerClient.baseUrl}/profile/cv`} target="_blank" rel="noreferrer">
-                          <Download className="mr-2 h-4 w-4" /> Download
-                        </a>
+                      <Button variant="outline" onClick={handleCVDownload} disabled={downloadingCV}>
+                        {downloadingCV ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} Download
                       </Button>
                       <div className="relative">
                         <Input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".pdf,.doc,.docx" onChange={handleCVUpload} disabled={saving} />

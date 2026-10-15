@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
 import apiServerClient from '@/lib/apiServerClient.js';
@@ -15,14 +15,12 @@ const BookmarkedCoursesPage = () => {
   const [bookmarks, setBookmarks] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchBookmarks();
-  }, [currentUser]);
+  const token = currentUser?.token;
 
-  const fetchBookmarks = async () => {
+  const fetchBookmarks = useCallback(async () => {
     try {
       const bookmarks = await apiServerClient.fetch('/bookmarked-courses', {
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setBookmarks(bookmarks);
     } catch (error) {
@@ -31,7 +29,11 @@ const BookmarkedCoursesPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    fetchBookmarks();
+  }, [token, fetchBookmarks]);
 
   const handleRemove = async (courseId, bookmarkId) => {
     try {

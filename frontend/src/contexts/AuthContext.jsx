@@ -100,11 +100,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ✅ GOOGLE LOGIN
-  const loginWithGoogle = () => {
-    window.location.href = `${apiServerClient.baseUrl}/auth/google`;
-  };
-
   // ✅ LOGOUT
   const logout = () => {
     localStorage.removeItem("authToken");
@@ -146,7 +141,6 @@ export const AuthProvider = ({ children }) => {
     loading,
     signup,
     login,
-    loginWithGoogle,
     logout,
     requestPasswordReset,
     confirmPasswordReset,

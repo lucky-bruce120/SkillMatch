@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient.js';
@@ -27,12 +27,10 @@ const CourseRecommendationsPage = () => {
     search: ''
   });
 
-  useEffect(() => {
-    fetchCourses();
-    if (currentUser) fetchBookmarks();
-  }, [currentUser, skillGaps]);
 
-  const fetchCourses = async () => {
+  const token = currentUser?.token;
+
+  const fetchCourses = useCallback(async () => {
     setLoading(true);
     try {
       const result = await apiServerClient.fetch(`/courses/recommendations?skill_gaps=${encodeURIComponent(skillGaps || 'general')}`);
@@ -58,18 +56,23 @@ const CourseRecommendationsPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [skillGaps]);
 
-  const fetchBookmarks = async () => {
+  const fetchBookmarks = useCallback(async () => {
     try {
       const bookmarks = await apiServerClient.fetch('/bookmarked-courses', {
-        headers: { Authorization: `Bearer ${currentUser?.token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       setBookmarkedIds(new Set(bookmarks.map((bookmark) => String(bookmark.course_id))));
     } catch (error) {
       console.error('Error fetching bookmarks:', error);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    fetchCourses();
+    if (token) fetchBookmarks();
+  }, [token, skillGaps, fetchCourses, fetchBookmarks]);
 
   const toggleBookmark = async (courseId) => {
     if (!currentUser) {

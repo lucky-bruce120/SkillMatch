@@ -13,7 +13,7 @@ const router = express.Router();
 // POST /apply-job
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { jobId, coverLetter, cvFileId } = req.body;
+    const { jobId, coverLetter } = req.body;
     const jobSeekerId = req.userId;
 
     if (!jobId) {

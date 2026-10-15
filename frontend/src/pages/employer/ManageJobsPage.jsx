@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient.js';
@@ -13,10 +13,12 @@ const ManageJobsPage = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchJobs = async () => {
+  const token = currentUser?.token;
+
+  const fetchJobs = useCallback(async () => {
     try {
       const jobsData = await apiServerClient.fetch('/employer/jobs', {
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setJobs(jobsData);
     } catch (error) {
@@ -25,11 +27,11 @@ const ManageJobsPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
-    if (currentUser) fetchJobs();
-  }, [currentUser]);
+    if (token) fetchJobs();
+  }, [token, fetchJobs]);
 
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this job?")) return;

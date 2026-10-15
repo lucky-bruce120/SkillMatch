@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient.js';
 
@@ -12,10 +12,12 @@ const UserManagementPage = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchUsers = async () => {
+  const token = currentUser?.token;
+
+  const fetchUsers = useCallback(async () => {
     try {
       const result = await apiServerClient.fetch('/admin/users', {
-        headers: { Authorization: `Bearer ${currentUser?.token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       setUsers(result);
     } catch (error) {
@@ -24,11 +26,11 @@ const UserManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
-    if (currentUser) fetchUsers();
-  }, [currentUser]);
+    if (token) fetchUsers();
+  }, [token, fetchUsers]);
 
   const toggleStatus = async (user) => {
     const newStatus = user.account_status === 'active' ? 'deactivated' : 'active';

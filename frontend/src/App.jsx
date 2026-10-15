@@ -12,6 +12,7 @@ import HomePage from './pages/HomePage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
 import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import JobListingsPage from './pages/JobListingsPage.jsx';
 import JobDetailsPage from './pages/JobDetailsPage.jsx';
 
@@ -58,6 +59,7 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/jobs" element={<JobListingsPage />} />
               <Route path="/job/:id" element={<JobDetailsPage />} />
 

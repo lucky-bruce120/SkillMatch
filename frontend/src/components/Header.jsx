@@ -1,11 +1,11 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient.js';
 
 import { Button } from '@/components/ui/button.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
-import { Briefcase, Menu, X, Bell, ChevronDown, MessageSquare } from 'lucide-react';
+import { Briefcase, Menu, X, Bell, ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,24 +24,32 @@ const Header = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
-  useEffect(() => {
-    if (isAuthenticated && currentUser) {
-      fetchUnreadCount();
-      const interval = setInterval(fetchUnreadCount, 30000); // Poll every 30s
-      return () => clearInterval(interval);
-    }
-  }, [isAuthenticated, currentUser]);
+  const token = currentUser?.token;
 
-  const fetchUnreadCount = async () => {
+  const fetchUnreadCount = useCallback(async () => {
     try {
       const data = await apiServerClient.fetch('/notifications/unread-count', {
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setUnreadCount(data.count || 0);
     } catch (error) {
       console.error("Error fetching unread count:", error);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !token) {
+      setUnreadCount(0);
+      return;
+    }
+
+    fetchUnreadCount();
+    // fetchUnreadCount is memoised on `token`, so this effect re-runs (and
+    // clears the old interval) whenever the token changes. Previously the
+    // interval captured the first render's token and kept 401-ing forever.
+    const interval = setInterval(fetchUnreadCount, 30000); // Poll every 30s
+    return () => clearInterval(interval);
+  }, [isAuthenticated, token, fetchUnreadCount]);
 
   const handleLogout = () => {
     logout();
@@ -118,10 +126,6 @@ const Header = () => {
           <div className="hidden md:flex items-center gap-4">
             {isAuthenticated ? (
               <>
-                <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
-                  <MessageSquare size={20} />
-                </Button>
-                
                 <div className="relative">
                   <Button 
                     variant="ghost" 

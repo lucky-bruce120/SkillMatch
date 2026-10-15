@@ -12,6 +12,7 @@ const ForgotPasswordPage = () => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [resetLink, setResetLink] = useState('');
   const [loading, setLoading] = useState(false);
   const { requestPasswordReset } = useAuth();
 
@@ -19,11 +20,18 @@ const ForgotPasswordPage = () => {
     e.preventDefault();
     setError('');
     setMessage('');
+    setResetLink('');
     setLoading(true);
 
     try {
-      await requestPasswordReset(email);
+      const response = await requestPasswordReset(email);
       setMessage('Check your inbox for further instructions');
+
+      // No mail provider is configured yet, so the backend returns the reset
+      // token directly. Surface the link so the flow is usable in development.
+      if (response?.resetToken) {
+        setResetLink(`${window.location.origin}/reset-password?token=${response.resetToken}`);
+      }
     } catch (err) {
       setError('Failed to reset password. Make sure the email is correct.');
     } finally {
@@ -49,6 +57,16 @@ const ForgotPasswordPage = () => {
           {message && (
             <Alert className="mb-4 bg-green-50 text-green-800 border-green-200">
               <AlertDescription>{message}</AlertDescription>
+            </Alert>
+          )}
+          {resetLink && (
+            <Alert className="mb-4">
+              <AlertDescription>
+                <p className="mb-2 font-medium">Development only &mdash; no email service is configured yet:</p>
+                <Link to={resetLink} className="break-all text-primary underline font-medium">
+                  {resetLink}
+                </Link>
+              </AlertDescription>
             </Alert>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">

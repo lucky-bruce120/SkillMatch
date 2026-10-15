@@ -5,9 +5,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Briefcase, Clock, DollarSign, Target, ChevronRight, Star } from 'lucide-react';
 
 const CareerPathPage = () => {
+  // NOTE: These paths are illustrative sample data, not personalised results.
+  // No backend endpoint currently generates career paths, so this page renders
+  // static examples. It is labelled as a demo in the UI to avoid presenting
+  // invented roles and salaries as real personalised guidance.
   const [paths, setPaths] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,12 +38,20 @@ const CareerPathPage = () => {
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-5xl">
-      <div className="text-center mb-16">
+      <div className="text-center mb-8">
         <h1 className="text-4xl font-bold tracking-tight mb-4">Career Path Explorer</h1>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
           Visualize your professional journey. Discover potential career trajectories, required skills, and salary expectations to plan your next move.
         </p>
       </div>
+
+      <Alert variant="default" className="mb-10">
+        <AlertTitle>Demo data</AlertTitle>
+        <AlertDescription>
+          These career paths are illustrative examples and are not personalised to your profile.
+          Personalised career path recommendations are not yet available.
+        </AlertDescription>
+      </Alert>
 
       <div className="space-y-16 relative before:absolute before:inset-0 before:ml-6 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-primary/50 before:via-primary/20 before:to-transparent">
         {paths.map((path, index) => (

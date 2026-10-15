@@ -36,7 +36,8 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ error: 'User already exists' });
     }
 
-    const hashedPassword = bcrypt.hashSync(password, 10);
+    // Async hashing: hashSync blocks the event loop on every signup.
+    const hashedPassword = await bcrypt.hash(password, 10);
     const emailVerificationCode = generateShortCode();
 
     const user = new User({

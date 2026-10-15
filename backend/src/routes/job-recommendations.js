@@ -12,25 +12,28 @@ router.post('/', authMiddleware, async (req, res) => {
     const { skills } = req.body;
 
     if (!skills || !Array.isArray(skills) || skills.length === 0) {
-      return res.status(400).json({ error: 'skills array is required' });
+      return res.status(400).json({ error: 'skills array is required and must not be empty' });
     }
 
     // Normalize user skills to lowercase
     const userSkills = skills.map(s => s.trim().toLowerCase());
 
-    // Fetch all jobs from MongoDB
-    const jobs = await Job.find().limit(100);
+    // Fetch all published jobs from MongoDB
+    const jobs = await Job.find({ status: 'active' }).limit(100);
 
     // Calculate match score for each job
     const jobsWithScores = jobs
       .map(job => {
         let matchScore = 0;
-        let matchedSkillsCount = 0;
 
-        if (job.skills && job.skills.length > 0) {
-          const requiredSkills = job.skills.map(s => s.toLowerCase());
-          // Calculate percentage of required skills user has
-          matchedSkillsCount = requiredSkills.filter(skill => userSkills.includes(skill)).length;
+        if (job.required_skills && job.required_skills.length > 0) {
+          const requiredSkills = job.required_skills.map(s => String(s).toLowerCase());
+
+          // Calculate percentage of user skills that match job requirements
+          const matchedSkillsCount = requiredSkills.filter(skill =>
+            userSkills.includes(skill)
+          ).length;
+
           matchScore = (matchedSkillsCount / requiredSkills.length) * 100;
         } else {
           // If no required skills specified, give base score
@@ -40,22 +43,25 @@ router.post('/', authMiddleware, async (req, res) => {
         return {
           id: job._id,
           title: job.title,
+          company: job.company,
           location: job.location,
           salary: job.salary,
+          salaryMin: job.salary_min,
+          salaryMax: job.salary_max,
+          description: job.description,
+          matchScore: Math.round(matchScore),
           jobType: job.jobType,
           remoteType: job.remoteType,
-          match_score: Math.round(matchScore),
-          required_skills: job.skills || [],
+          requiredSkills: job.required_skills,
         };
       })
-      .sort((a, b) => b.match_score - a.match_score)
+      .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, 10); // Return top 10 matches
 
-    res.json({
-      jobs: jobsWithScores,
-    });
+    // Return array directly
+    res.json(jobsWithScores);
   } catch (error) {
-    logger.error('Job recommendations error:', error);
+    logger.error('Job recommendations v2 error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

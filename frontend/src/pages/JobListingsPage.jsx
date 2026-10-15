@@ -1,9 +1,9 @@
-﻿import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 import apiServerClient from '@/lib/apiServerClient';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -36,21 +36,16 @@ const JobListingsPage = () => {
     min: job.salary_min ?? job.salaryMin,
     max: job.salary_max ?? job.salaryMax,
   });
+  const token = currentUser?.token;
+  const isJobSeeker = isAuthenticated && currentUser?.role === 'Job Seeker';
 
-  useEffect(() => {
-    fetchJobs();
-    if (isAuthenticated && currentUser?.role === 'Job Seeker') {
-      fetchSavedJobs();
-    }
-  }, [isAuthenticated, currentUser]);
-
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      if (isAuthenticated && currentUser?.role === 'Job Seeker') {
+      if (isJobSeeker) {
         // Fetch user skills for smart matching
         const skills = await apiServerClient.fetch('/profile/skills', {
-          headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+          headers: { 'Authorization': `Bearer ${token}` }
         });
 
         let skillNames = [];
@@ -58,10 +53,10 @@ const JobListingsPage = () => {
 
         if (skillNames.length > 0) {
           // Use smart matching endpoint
-          const recommendedJobs = await apiServerClient.fetch('/job-recommendations-v2', {
+          const recommendedJobs = await apiServerClient.fetch('/job-recommendations', {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${currentUser?.token}`
+              'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ skills: skillNames })
           });
@@ -82,18 +77,25 @@ const JobListingsPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isJobSeeker, token]);
 
-  const fetchSavedJobs = async () => {
+  const fetchSavedJobs = useCallback(async () => {
     try {
       const saved = await apiServerClient.fetch('/saved-jobs', {
-        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setSavedJobIds(new Set(saved.map(s => s.job_id)));
     } catch (error) {
       console.error("Error fetching saved jobs:", error);
     }
-  };
+  }, [token]);
+
+  useEffect(() => {
+    fetchJobs();
+    if (isJobSeeker) {
+      fetchSavedJobs();
+    }
+  }, [isJobSeeker, token, fetchJobs, fetchSavedJobs]);
 
   const toggleSaveJob = async (e, jobId) => {
     e.stopPropagation();

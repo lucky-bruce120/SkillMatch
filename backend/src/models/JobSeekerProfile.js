@@ -65,9 +65,8 @@ const jobSeekerProfileSchema = new mongoose.Schema({
   }
 });
 
-jobSeekerProfileSchema.pre('save', function(next) {
+jobSeekerProfileSchema.pre('save', function () {
   this.updated = Date.now();
-  next();
 });
 
 export default mongoose.model('JobSeekerProfile', jobSeekerProfileSchema);

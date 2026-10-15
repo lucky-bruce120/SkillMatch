@@ -22,9 +22,8 @@ const cvAnalysisSchema = new mongoose.Schema({
   }
 });
 
-cvAnalysisSchema.pre('save', function(next) {
+cvAnalysisSchema.pre('save', function () {
   this.updated = Date.now();
-  next();
 });
 
 export default mongoose.model('CVAnalysis', cvAnalysisSchema);

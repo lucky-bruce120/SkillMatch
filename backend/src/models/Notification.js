@@ -28,9 +28,8 @@ const notificationSchema = new mongoose.Schema({
   }
 });
 
-notificationSchema.pre('save', function(next) {
+notificationSchema.pre('save', function () {
   this.updated = Date.now();
-  next();
 });
 
 export default mongoose.model('Notification', notificationSchema);
