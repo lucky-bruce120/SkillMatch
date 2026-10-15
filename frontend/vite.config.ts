@@ -15,4 +15,18 @@ export default defineConfig({
     host: '0.0.0.0',
     strictPort: true,
   },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'charts': ['recharts'],
+          'ui-vendor': ['framer-motion', 'lucide-react', 'sonner'],
+        },
+      },
+    },
+  },
 })

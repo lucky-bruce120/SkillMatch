@@ -5,8 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3002 --strictPort",
-    "build": "vite build --outDir ../dist/apps/web --emptyOutDir",
-    "start": "vite preview --outDir ../dist/apps/web --host :: --port 3000",
+    "build": "vite build --outDir dist --emptyOutDir",
+    "start": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "eslint . --quiet",
     "lint:warn": "eslint ."
   },
