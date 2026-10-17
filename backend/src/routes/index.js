@@ -17,6 +17,8 @@ import jobRecommendationsRouter from './job-recommendations.js';
 import bookmarkedCoursesRouter from './bookmarked-courses.js';
 import savedJobsRouter from './saved-jobs.js';
 import adminRouter from './admin.js';
+import newsRouter from './news.js';
+import careerPathRouter from './career-path.js';
 
 const router = Router();
 
@@ -27,6 +29,7 @@ export default () => {
   router.use('/jobs', jobsRouter);
   router.use('/employer', employerRouter);
   router.use('/notifications', notificationsRouter);
+  router.use('/news', newsRouter);
   router.use('/cv', cvRouter);
   router.use('/courses', coursesRouter);
   router.use('/bookmarked-courses', bookmarkedCoursesRouter);
@@ -34,6 +37,7 @@ export default () => {
   router.use('/admin', adminRouter);
   router.use('/job-market', jobMarketRouter);
   router.use('/interview-prep', interviewPrepRouter);
+  router.use('/career-path', careerPathRouter);
   router.use('/job-recommendations', jobRecommendationsRouter);
   router.use('/apply-job', applyJobRouter);
   router.use('/analyze-candidate', analyzeCandidateRouter);

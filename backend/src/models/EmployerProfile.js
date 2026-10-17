@@ -13,6 +13,11 @@ const employerProfileSchema = new mongoose.Schema({
   company_size: String,
   industry: String,
   location: String,
+  // Primary contact for applicants. Defaults to the account email.
+  contact_email: String,
+  contact_phone: String,
+  // Named person applicants can address, e.g. "Head of Talent".
+  hiring_contact: String,
   created: {
     type: Date,
     default: Date.now

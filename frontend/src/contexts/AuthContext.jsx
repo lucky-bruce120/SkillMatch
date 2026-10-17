@@ -1,7 +1,9 @@
 ﻿import React, { createContext, useContext, useState, useEffect } from "react";
 import apiServerClient from "@/lib/apiServerClient.js"; // ✅ FIXED IMPORT
 
-const AuthContext = createContext();
+// Exported so tests can mount a page with a stubbed session instead of having
+// to drive the real provider.
+export const AuthContext = createContext();
 const formatUserRole = (role) => {
   const normalized = String(role || '').toLowerCase().replace(/\s+/g, '_');
 

@@ -14,14 +14,43 @@ router.get('/', authMiddleware, async (req, res) => {
       .populate('job_id')
       .sort({ created: -1 });
 
-    // Transform to match expected format
-    const formattedSavedJobs = savedJobs.map(saved => ({
-      id: saved._id,
-      job_id: saved.job_id._id,
-      user_id: saved.user_id,
-      created: saved.created,
-      job: saved.job_id // Include populated job data
-    }));
+    // Map the populated job to a plain object.
+    //
+    // The populated document is a Mongoose subdocument, and the `id` virtual
+    // does not survive being nested inside a plain object like this. The
+    // frontend's JobCard links to `/job/${job.id}`, so without an explicit
+    // `id` every "View Details" button pointed at /job/undefined and 404'd.
+    // Also drop bookmarks whose job has since been deleted, rather than
+    // sending nulls the UI would try to render.
+    const formattedSavedJobs = savedJobs
+      .filter((saved) => saved.job_id)
+      .map((saved) => {
+        const job = saved.job_id.toObject ? saved.job_id.toObject() : { ...saved.job_id };
+
+        return {
+          id: String(saved._id),
+          job_id: String(job._id),
+          user_id: String(saved.user_id),
+          created: saved.created,
+          job: {
+            id: String(job._id),
+            _id: String(job._id),
+            title: job.title || 'Removed job',
+            company: job.company || '',
+            location: job.location || '',
+            description: job.description || '',
+            salary: job.salary ?? null,
+            salary_min: job.salary_min ?? null,
+            salary_max: job.salary_max ?? null,
+            jobType: job.jobType || '',
+            remoteType: job.remoteType || '',
+            experience_level: job.experience_level || '',
+            required_skills: job.required_skills || [],
+            status: job.status || '',
+            created: job.created,
+          },
+        };
+      });
 
     res.json(formattedSavedJobs);
   } catch (error) {

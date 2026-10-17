@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node src/main.js",
     "start": "node src/main.js",
+    "seed:content": "node src/scripts/seed-career-content.js",
     "lint": "eslint . --quiet"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "express": "^5.0.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.13.0",
     "mongoose": "^9.4.1",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient';
 
@@ -11,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea.jsx';
 import { Skeleton } from '@/components/ui/skeleton.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.jsx';
+import { Checkbox } from '@/components/ui/checkbox.jsx';
 import { Progress } from '@/components/ui/progress.jsx';
 import { Plus, FileText, UploadCloud, Download, Loader2, Image as ImageIcon, AlertCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,10 +21,51 @@ import ExperienceModal from '@/components/ExperienceModal.jsx';
 import SkillsModal from '@/components/SkillsModal.jsx';
 import EducationModal from '@/components/EducationModal.jsx';
 
+const TABS = [
+  { value: 'personal', label: 'Personal Info' },
+  { value: 'preferences', label: 'Job Preferences' },
+  { value: 'skills', label: 'Skills' },
+  { value: 'experience', label: 'Experience' },
+  { value: 'education', label: 'Education' },
+  { value: 'resume', label: 'Resume / CV' },
+];
+
+const VALID_TABS = TABS.map((tab) => tab.value);
+
 const ProfileSettingsPage = () => {
   const { currentUser } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Tabs are deep-linkable, so the dashboard's "Update Resume" and
+  // "Add New Skills" buttons can open this page on the right tab instead of
+  // always landing on Personal Info.
+  const requestedTab = searchParams.get('tab');
+  const activeTab = VALID_TABS.includes(requestedTab) ? requestedTab : 'personal';
+
+  const setActiveTab = useCallback(
+    (tab) => {
+      if (tab === 'personal') {
+        // Keep the URL clean for the default tab.
+        setSearchParams({}, { replace: true });
+      } else {
+        setSearchParams({ tab }, { replace: true });
+      }
+    },
+    [setSearchParams]
+  );
+
+  const token = currentUser?.token;
+  // The User model has no `name` field, so this used to always be undefined and
+  // the prefilled form came up blank. Fall back to the email local-part instead.
+  const currentUserName = useMemo(() => {
+    const localPart = currentUser?.email?.split('@')[0] || '';
+    return localPart.charAt(0).toUpperCase() + localPart.slice(1);
+  }, [currentUser?.email]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  const [preferencesError, setPreferencesError] = useState('');
   const [downloadingCV, setDownloadingCV] = useState(false);
   const [uploadingPic, setUploadingPic] = useState(false);
   const [updateError, setUpdateError] = useState(null);
@@ -37,7 +80,115 @@ const ProfileSettingsPage = () => {
     full_name: '', bio: '', location: '', phone: '', date_of_birth: '', gender: '', nationality: '', linkedin_url: '', portfolio_url: '', github_url: ''
   });
 
+  const [preferences, setPreferences] = useState({
+    desired_roles: '',
+    preferred_locations: '',
+    work_arrangement: 'any',
+    job_type: 'any',
+    experience_level: 'any',
+    expected_salary_min: '',
+    expected_salary_max: '',
+    availability: '',
+    open_to_relocate: false,
+    profile_visible: true,
+  });
+
   const [picPreview, setPicPreview] = useState(null);
+
+  // Snapshot of the form as last saved, so we can warn before losing edits.
+  const [savedFormData, setSavedFormData] = useState(null);
+
+  // The backend returns a 0-10 field count rendered as a percentage, so fall
+  // back to counting locally when it is absent.
+  const strengthBreakdown = useMemo(() => {
+    const fields = [
+      { label: 'Full name', done: Boolean(formData.full_name?.trim()) },
+      { label: 'Bio', done: Boolean(formData.bio?.trim()) },
+      { label: 'Location', done: Boolean(formData.location?.trim()) },
+      { label: 'Phone', done: Boolean(formData.phone?.trim()) },
+      { label: 'LinkedIn', done: Boolean(formData.linkedin_url?.trim()) },
+      { label: 'Profile photo', done: Boolean(profile?.picture) },
+      { label: 'Resume / CV', done: Boolean(profile?.cv) },
+      { label: 'Skills', done: skills.length > 0 },
+      { label: 'Experience', done: experience.length > 0 },
+      { label: 'Education', done: education.length > 0 },
+    ];
+
+    const done = fields.filter((field) => field.done).length;
+    return {
+      fields,
+      done,
+      total: fields.length,
+      percent: Math.round((done / fields.length) * 100),
+      missing: fields.filter((field) => !field.done),
+    };
+  }, [formData, profile, skills, experience, education]);
+
+  // Guard against firing on the very first render, before the form is populated.
+  const hasUnsavedChanges =
+    savedFormData !== null && JSON.stringify(formData) !== JSON.stringify(savedFormData);
+
+  // Roles and locations are stored as arrays but edited as comma-separated
+  // text, which is far less fiddly than a chip input.
+  const preferencesToRequest = () => ({
+    desired_roles: preferences.desired_roles.split(',').map((value) => value.trim()).filter(Boolean),
+    preferred_locations: preferences.preferred_locations.split(',').map((value) => value.trim()).filter(Boolean),
+    work_arrangement: preferences.work_arrangement,
+    job_type: preferences.job_type,
+    experience_level: preferences.experience_level,
+    expected_salary_min: preferences.expected_salary_min ? Number(preferences.expected_salary_min) : null,
+    expected_salary_max: preferences.expected_salary_max ? Number(preferences.expected_salary_max) : null,
+    availability: preferences.availability,
+    open_to_relocate: preferences.open_to_relocate,
+    profile_visible: preferences.profile_visible,
+  });
+
+  const savePreferences = async () => {
+    const min = Number(preferences.expected_salary_min);
+    const max = Number(preferences.expected_salary_max);
+
+    if (preferences.expected_salary_min && preferences.expected_salary_max && max < min) {
+      const message = 'Maximum salary cannot be lower than the minimum.';
+      setUpdateError(message);
+      toast.error(message);
+      return;
+    }
+
+    setSavingPreferences(true);
+    setPreferencesError('');
+
+    try {
+      const updated = await apiServerClient.fetch('/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ preferences: preferencesToRequest() }),
+      });
+
+      setProfile(updated);
+      setPreferences({
+        desired_roles: (updated.preferences?.desired_roles || []).join(', '),
+        preferred_locations: (updated.preferences?.preferred_locations || []).join(', '),
+        work_arrangement: updated.preferences?.work_arrangement || 'any',
+        job_type: updated.preferences?.job_type || 'any',
+        experience_level: updated.preferences?.experience_level || 'any',
+        expected_salary_min: updated.preferences?.expected_salary_min ?? '',
+        expected_salary_max: updated.preferences?.expected_salary_max ?? '',
+        availability: updated.preferences?.availability || '',
+        open_to_relocate: Boolean(updated.preferences?.open_to_relocate),
+        profile_visible: updated.preferences?.profile_visible !== false,
+      });
+      toast.success('Job preferences saved');
+    } catch (error) {
+      const message = error.body?.error || error.message || 'Could not save your preferences.';
+      setPreferencesError(message);
+      toast.error(message);
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
 
   // Modal States
   const [expModalOpen, setExpModalOpen] = useState(false);
@@ -48,13 +199,6 @@ const ProfileSettingsPage = () => {
 
   const [eduModalOpen, setEduModalOpen] = useState(false);
   const [selectedEdu, setSelectedEdu] = useState(null);
-
-  const token = currentUser?.token;
-  const currentUserName = currentUser?.name;
-
-  useEffect(() => {
-    fetchProfileData();
-  }, [token, fetchProfileData]);
 
   const calculateAndSaveStrength = useCallback(async (prof, sk, ed, ex) => {
     if (!prof) return;
@@ -95,7 +239,7 @@ const ProfileSettingsPage = () => {
       console.log('[PROFILE INIT] Found existing profile:', profileRecord._id);
 
       setProfile(profileRecord);
-      setFormData({
+      const nextFormData = {
         full_name: getProfileName(profileRecord) || '',
         bio: profileRecord.bio || '',
         location: profileRecord.location || '',
@@ -106,6 +250,20 @@ const ProfileSettingsPage = () => {
         linkedin_url: profileRecord.linkedin_url || '',
         portfolio_url: profileRecord.portfolio_url || '',
         github_url: profileRecord.github_url || ''
+      };
+      setFormData(nextFormData);
+      setSavedFormData(nextFormData);
+      setPreferences({
+        desired_roles: (profileRecord.preferences?.desired_roles || []).join(', '),
+        preferred_locations: (profileRecord.preferences?.preferred_locations || []).join(', '),
+        work_arrangement: profileRecord.preferences?.work_arrangement || 'any',
+        job_type: profileRecord.preferences?.job_type || 'any',
+        experience_level: profileRecord.preferences?.experience_level || 'any',
+        expected_salary_min: profileRecord.preferences?.expected_salary_min ?? '',
+        expected_salary_max: profileRecord.preferences?.expected_salary_max ?? '',
+        availability: profileRecord.preferences?.availability || '',
+        open_to_relocate: Boolean(profileRecord.preferences?.open_to_relocate),
+        profile_visible: profileRecord.preferences?.profile_visible !== false,
       });
 
       if (profileRecord.picture) {
@@ -134,11 +292,14 @@ const ProfileSettingsPage = () => {
       console.error('[PROFILE INIT] Error:', error);
       console.log('[PROFILE INIT] No profile found, will create on save');
       setProfile(null);
-      setFormData({
+      const emptyFormData = {
         full_name: currentUserName || '',
         bio: '', location: '', phone: '', date_of_birth: '', gender: '', nationality: '',
         linkedin_url: '', portfolio_url: '', github_url: ''
-      });
+      };
+      setFormData(emptyFormData);
+      // Nothing is saved yet, so every field counts as an unsaved change.
+      setSavedFormData(null);
       setSkills([]);
       setEducation([]);
       setExperience([]);
@@ -148,31 +309,48 @@ const ProfileSettingsPage = () => {
     }
   }, [token, currentUser?.id, currentUserName, calculateAndSaveStrength]);
 
+  /**
+   * Load the profile once the token is known.
+   *
+   * This must sit *below* the `fetchProfileData` declaration above. A hook's
+   * dependency array is evaluated synchronously while the component renders,
+   * so referencing a `const` that has not been initialised yet throws
+   * "Cannot access 'fetchProfileData' before initialization" and blanks the
+   * whole page.
+   */
+  useEffect(() => {
+    fetchProfileData();
+  }, [fetchProfileData]);
+
   const handleProfileUpdate = async (e) => {
     if (e) e.preventDefault();
     setUpdateError(null);
 
-    console.log('----------------------------------------');
-    console.log('[PROFILE UPDATE] Initiating profile update');
-    console.log('[PROFILE UPDATE] Current User ID:', currentUser?.id);
-
     if (!formData.full_name || formData.full_name.trim() === '') {
       const errMsg = "Full Name is a required field.";
-      console.warn('[PROFILE UPDATE] Validation failed:', errMsg);
       setUpdateError(errMsg);
       toast.error(errMsg);
       return;
     }
 
+    // Catch obvious typos before spending a round trip on them.
+    const urlFields = ['linkedin_url', 'portfolio_url', 'github_url'];
+    for (const field of urlFields) {
+      const value = formData[field]?.trim();
+      if (value && !/^https?:\/\/.+/i.test(value)) {
+        const errMsg = `${field.replace(/_/g, ' ')} must start with http:// or https://`;
+        setUpdateError(errMsg);
+        toast.error(errMsg);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const dataToSave = { ...formData };
-      // Handle empty date fields
       if (!dataToSave.date_of_birth) {
         dataToSave.date_of_birth = null;
       }
-
-      console.log('[PROFILE UPDATE] Payload being sent to API:', dataToSave);
 
       const updated = await apiServerClient.fetch('/profile', {
         method: 'PUT',
@@ -183,24 +361,32 @@ const ProfileSettingsPage = () => {
         body: JSON.stringify(dataToSave)
       });
 
-      console.log('[PROFILE UPDATE] Success! Response:', updated);
       setProfile(updated);
+      // Re-sync from the server so the "unsaved changes" indicator clears
+      // against what was actually persisted, not what was submitted.
+      const persisted = {
+        full_name: getProfileName(updated) || '',
+        bio: updated.bio || '',
+        location: updated.location || '',
+        phone: updated.phone || '',
+        date_of_birth: updated.date_of_birth ? updated.date_of_birth.split('T')[0] : '',
+        gender: updated.gender || '',
+        nationality: updated.nationality || '',
+        linkedin_url: updated.linkedin_url || '',
+        portfolio_url: updated.portfolio_url || '',
+        github_url: updated.github_url || '',
+      };
+      setFormData(persisted);
+      setSavedFormData(persisted);
       calculateAndSaveStrength(updated, skills, education, experience);
       toast.success("Profile updated successfully");
     } catch (error) {
-      console.error('[PROFILE UPDATE] FAILED. Error object:', error);
-
-      let errorMessage = "An unexpected error occurred while updating your profile.";
-
-      if (error.message) {
-        errorMessage = error.message;
-      }
-
+      // Prefer the server's message; `error.body.error` is the actionable one.
+      const errorMessage = error.body?.error || error.message || "An unexpected error occurred while updating your profile.";
       setUpdateError(errorMessage);
       toast.error(errorMessage);
     } finally {
       setSaving(false);
-      console.log('----------------------------------------');
     }
   };
 
@@ -572,27 +758,49 @@ const ProfileSettingsPage = () => {
           <p className="text-muted-foreground mt-1">Manage your personal information, experience, and resume.</p>
         </div>
         
-        <Card className="w-full md:w-72 bg-primary/5 border-primary/20">
+        <Card className="w-full md:w-80 bg-primary/5 border-primary/20">
           <CardContent className="p-4">
             <div className="flex justify-between items-center mb-2">
               <span className="font-semibold text-sm">Profile Strength</span>
-              <span className="font-bold text-primary">{profile?.profile_strength || 0}%</span>
+              <span className="font-bold text-primary">{strengthBreakdown.percent}%</span>
             </div>
-            <Progress value={profile?.profile_strength || 0} className="h-2 mb-2" />
+            <Progress value={strengthBreakdown.percent} className="h-2 mb-2" />
             <p className="text-xs text-muted-foreground">
-              {profile?.profile_strength === 100 ? 'All set! You are ready to apply.' : 'Complete your profile to stand out to employers.'}
+              {strengthBreakdown.percent === 100
+                ? 'All set! You are ready to apply.'
+                : `${strengthBreakdown.done} of ${strengthBreakdown.total} sections complete.`}
             </p>
+
+            {/* Tell them exactly what to do next rather than just a percentage. */}
+            {strengthBreakdown.missing.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-primary/20">
+                <p className="text-xs font-semibold mb-2">Still missing</p>
+                <ul className="space-y-1">
+                  {strengthBreakdown.missing.slice(0, 4).map((field) => (
+                    <li key={field.label} className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground shrink-0" />
+                      {field.label}
+                    </li>
+                  ))}
+                </ul>
+                {strengthBreakdown.missing.length > 4 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    +{strengthBreakdown.missing.length - 4} more
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="personal" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto p-1">
-          <TabsTrigger value="personal" className="py-2.5">Personal Info</TabsTrigger>
-          <TabsTrigger value="experience" className="py-2.5">Experience</TabsTrigger>
-          <TabsTrigger value="education" className="py-2.5">Education</TabsTrigger>
-          <TabsTrigger value="skills" className="py-2.5">Skills</TabsTrigger>
-          <TabsTrigger value="resume" className="py-2.5">Resume / CV</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 h-auto p-1">
+          {TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="py-2.5">
+              {tab.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         {/* PERSONAL INFO TAB */}
@@ -699,17 +907,185 @@ const ProfileSettingsPage = () => {
                   </div>
                 </div>
 
-                <div className="flex justify-end pt-4 gap-3">
+                <div className="flex justify-end pt-4 gap-3 items-center">
+                  {hasUnsavedChanges && !updateError && (
+                    <span className="text-sm text-amber-600 dark:text-amber-400 mr-auto flex items-center gap-1.5">
+                      <AlertCircle className="h-4 w-4" /> You have unsaved changes
+                    </span>
+                  )}
                   {updateError && (
-                    <Button type="button" variant="outline" onClick={handleProfileUpdate} disabled={saving}>
+                    <Button type="button" variant="outline" onClick={handleProfileUpdate} disabled={saving} className="mr-auto">
                       <RefreshCw className="mr-2 h-4 w-4" /> Retry
                     </Button>
                   )}
-                  <Button type="submit" size="lg" disabled={saving}>
+                  <Button type="submit" size="lg" disabled={saving || !hasUnsavedChanges}>
                     {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save Changes"}
                   </Button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* JOB PREFERENCES TAB */}
+        <TabsContent value="preferences">
+          <Card>
+            <CardHeader>
+              <CardTitle>Job Preferences</CardTitle>
+              <CardDescription>
+                Tell us what you are looking for so we can flag roles that fit and sort out the ones that do not.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {preferencesError && (
+                <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3 text-destructive">
+                  <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                  <p className="text-sm">{preferencesError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="desired_roles">Roles you are interested in</Label>
+                  <Input
+                    id="desired_roles"
+                    placeholder="Frontend Engineer, React Developer, UI Engineer"
+                    value={preferences.desired_roles}
+                    onChange={(e) => setPreferences({ ...preferences, desired_roles: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">Separate with commas. We use these to rank matching roles.</p>
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="preferred_locations">Preferred locations</Label>
+                  <Input
+                    id="preferred_locations"
+                    placeholder="London, Manchester, Remote"
+                    value={preferences.preferred_locations}
+                    onChange={(e) => setPreferences({ ...preferences, preferred_locations: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Work arrangement</Label>
+                  <Select
+                    value={preferences.work_arrangement}
+                    onValueChange={(v) => setPreferences({ ...preferences, work_arrangement: v })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="remote">Remote</SelectItem>
+                      <SelectItem value="hybrid">Hybrid</SelectItem>
+                      <SelectItem value="on-site">On-site</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Employment type</Label>
+                  <Select
+                    value={preferences.job_type}
+                    onValueChange={(v) => setPreferences({ ...preferences, job_type: v })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="full-time">Full-time</SelectItem>
+                      <SelectItem value="part-time">Part-time</SelectItem>
+                      <SelectItem value="contract">Contract</SelectItem>
+                      <SelectItem value="internship">Internship</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Experience level</Label>
+                  <Select
+                    value={preferences.experience_level}
+                    onValueChange={(v) => setPreferences({ ...preferences, experience_level: v })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="entry">Entry level</SelectItem>
+                      <SelectItem value="mid">Mid level</SelectItem>
+                      <SelectItem value="senior">Senior</SelectItem>
+                      <SelectItem value="executive">Executive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="availability">Availability</Label>
+                  <Input
+                    id="availability"
+                    placeholder="Immediately, 1 month notice, 3 months"
+                    value={preferences.availability}
+                    onChange={(e) => setPreferences({ ...preferences, availability: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="salary_min">Expected salary (min)</Label>
+                  <Input
+                    id="salary_min"
+                    type="number"
+                    min="0"
+                    placeholder="50000"
+                    value={preferences.expected_salary_min}
+                    onChange={(e) => setPreferences({ ...preferences, expected_salary_min: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="salary_max">Expected salary (max)</Label>
+                  <Input
+                    id="salary_max"
+                    type="number"
+                    min="0"
+                    placeholder="80000"
+                    value={preferences.expected_salary_max}
+                    onChange={(e) => setPreferences({ ...preferences, expected_salary_max: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-2 border-t">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={preferences.open_to_relocate}
+                    onCheckedChange={(checked) => setPreferences({ ...preferences, open_to_relocate: checked === true })}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <p className="text-sm font-medium">I am open to relocating</p>
+                    <p className="text-xs text-muted-foreground">We will surface roles outside your preferred locations too.</p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={preferences.profile_visible}
+                    onCheckedChange={(checked) => setPreferences({ ...preferences, profile_visible: checked === true })}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <p className="text-sm font-medium">My profile is visible to employers</p>
+                    <p className="text-xs text-muted-foreground">Turn this off to browse without appearing in employer searches.</p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button size="lg" onClick={savePreferences} disabled={savingPreferences}>
+                  {savingPreferences ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
+                  ) : (
+                    'Save Preferences'
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

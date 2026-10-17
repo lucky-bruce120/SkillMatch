@@ -53,14 +53,17 @@ const JobListingsPage = () => {
 
         if (skillNames.length > 0) {
           // Use smart matching endpoint
-          const recommendedJobs = await apiServerClient.fetch('/job-recommendations', {
+          const result = await apiServerClient.fetch('/job-recommendations', {
             method: 'POST',
             headers: {
+              'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ skills: skillNames })
           });
-          setJobs(recommendedJobs);
+          // The endpoint returns { recommendations, ... }; accept a bare array
+          // too so this page keeps working if the shape ever changes back.
+          setJobs(Array.isArray(result) ? result : result.recommendations || []);
         } else {
           // No skills, use regular job search
           const jobs = await apiServerClient.fetch('/jobs/search');

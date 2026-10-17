@@ -1,5 +1,5 @@
 import React from 'react';
-import { Route, Routes, BrowserRouter as Router } from 'react-router-dom';
+import { Route, Routes, Navigate, BrowserRouter as Router } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import ScrollToTop from './components/ScrollToTop';
 import { AuthProvider } from './contexts/AuthContext.jsx';
@@ -39,6 +39,7 @@ import ManageJobsPage from './pages/employer/ManageJobsPage.jsx';
 import JobApplicantsPage from './pages/employer/JobApplicantsPage.jsx';
 import CandidateProfilePage from './pages/employer/CandidateProfilePage.jsx';
 import EmployerApplicationDashboard from './pages/employer/EmployerApplicationDashboard.jsx';
+import EmployerSettingsPage from './pages/employer/EmployerSettingsPage.jsx';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard.jsx';
@@ -75,6 +76,9 @@ function App() {
               <Route path="/cv-analyzer" element={<ProtectedRoute allowedRoles={['Job Seeker']}><CVAnalyzerPage /></ProtectedRoute>} />
               <Route path="/cv-analysis/:id" element={<ProtectedRoute allowedRoles={['Job Seeker']}><CVAnalysisResultsPage /></ProtectedRoute>} />
               <Route path="/courses" element={<ProtectedRoute allowedRoles={['Job Seeker']}><CourseRecommendationsPage /></ProtectedRoute>} />
+              {/* Two pages linked here before this route existed, so old bookmarks
+                  and shared links landed on the 404 page. Keep it working. */}
+              <Route path="/course-recommendations" element={<Navigate to="/courses" replace />} />
               <Route path="/job-market-analytics" element={<ProtectedRoute><JobMarketAnalyticsPage /></ProtectedRoute>} />
               <Route path="/interview-prep" element={<ProtectedRoute allowedRoles={['Job Seeker']}><InterviewPrepPage /></ProtectedRoute>} />
               <Route path="/career-path" element={<ProtectedRoute allowedRoles={['Job Seeker']}><CareerPathPage /></ProtectedRoute>} />
@@ -88,6 +92,7 @@ function App() {
               <Route path="/employer/jobs/:id/applicants" element={<ProtectedRoute allowedRoles={['Employer']}><JobApplicantsPage /></ProtectedRoute>} />
               <Route path="/employer/candidate/:id" element={<ProtectedRoute allowedRoles={['Employer']}><CandidateProfilePage /></ProtectedRoute>} />
               <Route path="/employer/applications" element={<ProtectedRoute allowedRoles={['Employer']}><EmployerApplicationDashboard /></ProtectedRoute>} />
+              <Route path="/employer/settings" element={<ProtectedRoute allowedRoles={['Employer']}><EmployerSettingsPage /></ProtectedRoute>} />
               <Route path="/employer/interviews" element={<ProtectedRoute allowedRoles={['Employer']}><div className="container mx-auto py-8 text-center">Interviews Page Coming Soon</div></ProtectedRoute>} />
 
               {/* Admin Protected Routes */}

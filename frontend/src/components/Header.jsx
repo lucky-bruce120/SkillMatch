@@ -5,7 +5,7 @@ import apiServerClient from '@/lib/apiServerClient.js';
 
 import { Button } from '@/components/ui/button.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
-import { Briefcase, Menu, X, Bell, ChevronDown } from 'lucide-react';
+import { Briefcase, Menu, X, Bell, ChevronDown, Settings, Heart, Bookmark, FileText, ShieldCheck, LogOut } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.jsx";
 import NotificationDropdown from './NotificationDropdown.jsx';
+import { getDisplayName } from '@/lib/displayName.js';
 
 const Header = () => {
   const { isAuthenticated, currentUser, logout } = useAuth();
@@ -25,6 +26,18 @@ const Header = () => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   const token = currentUser?.token;
+
+  // There is no `name` on the User model, so derive one from the email.
+  const userName = getDisplayName(null, currentUser);
+  const userInitial = (userName || 'U').charAt(0).toUpperCase();
+
+  // Each role has its own settings destination.
+  const profileSettingsPath =
+    currentUser?.role === 'Employer'
+      ? '/employer/settings'
+      : currentUser?.role === 'Admin'
+        ? '/admin/users'
+        : '/profile';
 
   const fetchUnreadCount = useCallback(async () => {
     try {
@@ -149,31 +162,81 @@ const Header = () => {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-8 w-8 rounded-full ml-2">
+                    <Button variant="ghost" className="relative h-8 w-8 rounded-full ml-2" aria-label="Account menu">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-bold">
-                        {currentUser?.name?.charAt(0) || 'U'}
+                        {userInitial}
                       </div>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuContent align="end" className="w-60">
                     <DropdownMenuLabel className="font-normal">
                       <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none">{currentUser?.name || 'User'}</p>
-                        <p className="text-xs leading-none text-muted-foreground">{currentUser?.email}</p>
+                        {/* The User model has no `name`, so this used to always
+                            render the literal "User". */}
+                        <p className="text-sm font-medium leading-none">{userName}</p>
+                        <p className="text-xs leading-none text-muted-foreground break-all">{currentUser?.email}</p>
                         <Badge variant="secondary" className="w-fit mt-2 text-[10px]">{currentUser?.role}</Badge>
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+
+                    {/* Profile Settings is offered to every role. It used to be
+                        inside a Job-Seeker-only block, so employers and admins
+                        had no way into their settings at all. */}
+                    <DropdownMenuItem asChild>
+                      <Link to={profileSettingsPath}>
+                        <Settings className="mr-2 h-4 w-4" /> Profile Settings
+                      </Link>
+                    </DropdownMenuItem>
+
                     {currentUser?.role === 'Job Seeker' && (
                       <>
-                        <DropdownMenuItem asChild><Link to="/profile">Profile Settings</Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link to="/saved-jobs">Saved Jobs</Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link to="/bookmarked-courses">Saved Courses</Link></DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link to="/saved-jobs">
+                            <Heart className="mr-2 h-4 w-4" /> Saved Jobs
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link to="/bookmarked-courses">
+                            <Bookmark className="mr-2 h-4 w-4" /> Saved Courses
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link to="/applications">
+                            <FileText className="mr-2 h-4 w-4" /> My Applications
+                          </Link>
+                        </DropdownMenuItem>
                       </>
                     )}
+
+                    {currentUser?.role === 'Employer' && (
+                      <DropdownMenuItem asChild>
+                        <Link to="/employer/dashboard">
+                          <Briefcase className="mr-2 h-4 w-4" /> Employer Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+
+                    {currentUser?.role === 'Admin' && (
+                      <DropdownMenuItem asChild>
+                        <Link to="/admin/dashboard">
+                          <ShieldCheck className="mr-2 h-4 w-4" /> Admin Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+
+                    <DropdownMenuItem asChild>
+                      <Link to="/notifications">
+                        <Bell className="mr-2 h-4 w-4" /> Notifications
+                        {unreadCount > 0 && (
+                          <span className="ml-auto text-xs font-semibold text-primary">{unreadCount}</span>
+                        )}
+                      </Link>
+                    </DropdownMenuItem>
+
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-                      Log out
+                      <LogOut className="mr-2 h-4 w-4" /> Log out
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -223,6 +286,34 @@ const Header = () => {
                 <Link to="/courses" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>Courses</Link>
               </>
             )}
+
+            {/* The mobile menu had no account section at all, so Profile
+                Settings was unreachable on small screens. */}
+            {isAuthenticated && (
+              <>
+                <div className="px-3 py-2 text-sm font-bold text-foreground uppercase tracking-wider mt-2">Account</div>
+                <Link
+                  to={profileSettingsPath}
+                  className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Profile Settings
+                </Link>
+                <Link to="/notifications" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>
+                  Notifications{unreadCount > 0 ? ` (${unreadCount})` : ''}
+                </Link>
+                {currentUser?.role === 'Job Seeker' && (
+                  <>
+                    <Link to="/saved-jobs" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>Saved Jobs</Link>
+                    <Link to="/applications" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>My Applications</Link>
+                  </>
+                )}
+                {currentUser?.role === 'Employer' && (
+                  <Link to="/employer/applications" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>Review Applicants</Link>
+                )}
+              </>
+            )}
+
             {isAuthenticated ? (
               <button
                 onClick={() => {

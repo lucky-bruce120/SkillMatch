@@ -1,11 +1,14 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext.jsx';
+import AuthenticatedHome from './AuthenticatedHome.jsx';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { BrainCircuit, Target, Zap, BellRing, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const HomePage = () => {
+// Public marketing page - shown only to signed-out visitors.
+const MarketingHome = () => {
   return (
     <div className="flex flex-col min-h-screen">
       {/* Hero Section */}
@@ -138,4 +141,13 @@ const HomePage = () => {
   );
 };
 
-export default HomePage;
+export default function HomePage() {
+  const { isAuthenticated } = useAuth();
+
+  // Signed-in users get their activity feed instead of the marketing page.
+  if (isAuthenticated) {
+    return <AuthenticatedHome />;
+  }
+
+  return <MarketingHome />;
+}

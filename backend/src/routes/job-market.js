@@ -26,14 +26,19 @@ router.get('/analytics', async (req, res) => {
     });
 
     profiles.forEach((profile) => {
-      const skills = [
-        ...(profile.skills || []),
-        ...((profile.skillDetails || []).map((skill) => skill.skill_name)),
-      ];
+      // `skillDetails` is the source of truth and `skills` now mirrors it, so
+      // reading both would count every skill twice. Only fall back to the
+      // legacy array for records written before the mirror existed.
+      const fromDetails = (profile.skillDetails || []).map((skill) => skill.skill_name);
+      const skills = fromDetails.length ? fromDetails : (profile.skills || []);
 
+      // De-duplicate within a profile: listing React twice should not imply
+      // two people.
+      const counted = new Set();
       skills.forEach((skill) => {
         const key = String(skill).trim().toLowerCase();
-        if (!key) return;
+        if (!key || counted.has(key)) return;
+        counted.add(key);
         skillSupply.set(key, (skillSupply.get(key) || 0) + 1);
       });
     });

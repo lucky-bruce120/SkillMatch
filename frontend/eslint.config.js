@@ -39,6 +39,11 @@ export default [
       'react/prop-types': 'off',
       'react/no-unescaped-entities': 'off',
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      // A hook's dependency array is evaluated while the component renders, so
+      // referencing a `const` declared further down throws
+      // "Cannot access X before initialization" and blanks the page. This rule
+      // catches that before it reaches the browser.
+      'no-use-before-define': ['error', { functions: false, classes: false, variables: true }],
     },
   },
 ];

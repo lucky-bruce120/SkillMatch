@@ -3,10 +3,45 @@ import Job from '../models/Job.js';
 import Application from '../models/Application.js';
 import User from '../models/User.js';
 import JobSeekerProfile from '../models/JobSeekerProfile.js';
+import EmployerProfile from '../models/EmployerProfile.js';
 import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+
+/**
+ * Company details an employer can edit about themselves.
+ * Deliberately separate from Job: a job is a per-posting entity, this is the
+ * company identity that appears on every listing.
+ */
+const EDITABLE_EMPLOYER_FIELDS = [
+  'company_name',
+  'company_description',
+  'company_website',
+  'company_size',
+  'industry',
+  'location',
+  'contact_email',
+  'contact_phone',
+  'hiring_contact',
+];
+
+const formatEmployerProfile = (profile) => ({
+  id: String(profile._id),
+  _id: String(profile._id),
+  user_id: String(profile.user_id),
+  company_name: profile.company_name || '',
+  company_description: profile.company_description || '',
+  company_website: profile.company_website || '',
+  company_size: profile.company_size || '',
+  industry: profile.industry || '',
+  location: profile.location || '',
+  contact_email: profile.contact_email || '',
+  contact_phone: profile.contact_phone || '',
+  hiring_contact: profile.hiring_contact || '',
+  created: profile.created,
+  updated: profile.updated,
+});
 
 const mapCandidateProfile = (profile, user) => ({
   id: String(profile._id),
@@ -41,6 +76,100 @@ const mapCandidateProfile = (profile, user) => ({
     field: item.field || item.field_of_study || '',
     graduation_year: item.graduation_year || item.graduationYear || null,
   })),
+});
+
+/**
+ * Coerce a skills field into a clean array of strings.
+ * Accepts an array, a comma-separated string, or nothing.
+ */
+const normalizeSkills = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((skill) => String(skill).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.split(',').map((skill) => skill.trim()).filter(Boolean);
+  }
+  return [];
+};
+
+/**
+ * GET /employer/profile
+ *
+ * The EmployerProfile model existed and was read when notifying employers, but
+ * there was no endpoint to view or edit it, so an employer had no way to set
+ * their company details. Returns an empty profile rather than 404 when one has
+ * not been created yet.
+ */
+router.get('/profile', authMiddleware, async (req, res) => {
+  try {
+    const profile = await EmployerProfile.findOne({ user_id: req.userId });
+
+    if (!profile) {
+      return res.json({
+        id: null,
+        _id: null,
+        user_id: String(req.userId),
+        company_name: '',
+        company_description: '',
+        company_website: '',
+        company_size: '',
+        industry: '',
+        location: '',
+        contact_email: req.userEmail || '',
+        contact_phone: '',
+        hiring_contact: '',
+        exists: false,
+        created: null,
+        updated: null,
+      });
+    }
+
+    res.json({ ...formatEmployerProfile(profile), exists: true });
+  } catch (error) {
+    logger.error('Get employer profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** PUT /employer/profile - create or update the company profile. */
+router.put('/profile', authMiddleware, async (req, res) => {
+  try {
+    const updateData = req.body || {};
+
+    if (updateData.company_website) {
+      const website = String(updateData.company_website).trim();
+      if (!/^https?:\/\/.+/i.test(website)) {
+        return res.status(400).json({ error: 'Company website must start with http:// or https://' });
+      }
+    }
+
+    if (updateData.contact_email) {
+      const email = String(updateData.contact_email).trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: 'Contact email is not a valid email address' });
+      }
+    }
+
+    const profile = await EmployerProfile.findOneAndUpdate(
+      { user_id: req.userId },
+      {
+        $set: EDITABLE_EMPLOYER_FIELDS.reduce((set, field) => {
+          if (updateData[field] !== undefined) {
+            set[field] = typeof updateData[field] === 'string'
+              ? updateData[field].trim()
+              : updateData[field];
+          }
+          return set;
+        }, {}),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+    );
+
+    res.json({ ...formatEmployerProfile(profile), exists: true });
+  } catch (error) {
+    logger.error('Update employer profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // GET /employer/jobs - Get jobs posted by current employer
@@ -122,7 +251,10 @@ router.post('/jobs', authMiddleware, async (req, res) => {
       salary: salary_min || salary_max ? Math.max(salary_min || 0, salary_max || 0) : undefined,
       jobType: jobTypeMapping[job_type] || job_type?.toLowerCase(),
       remoteType: remoteTypeMapping[remote_type] || remote_type?.toLowerCase(),
-      required_skills: required_skills ? required_skills.split(',').map(skill => skill.trim()) : [],
+      // Accept either a comma-separated string or an array. This previously
+      // called .split() unconditionally, so a client sending a JSON array (the
+      // natural shape) got a 500 instead of a created job.
+      required_skills: normalizeSkills(required_skills),
       experience_level: experienceLevelMapping[experience_level] || experience_level?.toLowerCase(),
       status: statusMapping[status] || 'active',
       employer_id: employerId,

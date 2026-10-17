@@ -31,6 +31,19 @@ router.put('/', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Application not found' });
     }
 
+    // Only the employer who posted the job may change its application status.
+    // Without this check any authenticated user could rewrite the outcome of
+    // any application by guessing its id, and trigger a notification to the
+    // candidate. `employer/applications/:id/status` already enforces this.
+    const job = await Job.findById(application.job_id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (job.employer_id.toString() !== req.userId) {
+      return res.status(403).json({ error: 'You are not allowed to update this application' });
+    }
+
     // Update application with new status and feedback
     application.status = status;
     if (feedback) {
@@ -52,9 +65,7 @@ router.put('/', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Get job info for notification message
-    const job = await Job.findById(application.job_id);
-    const jobTitle = job ? job.title : 'a job';
+    const jobTitle = job.title || 'a job';
 
     // Create notification for job seeker
     const notificationMessages = {

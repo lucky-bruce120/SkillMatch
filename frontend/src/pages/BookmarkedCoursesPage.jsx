@@ -10,6 +10,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Star, Clock, ExternalLink, Trash2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
+// The stored values are lowercase, but older records may predate the enum.
+const DIFFICULTY_STYLES = {
+  beginner: 'border-green-200 text-green-700 bg-green-50 dark:border-green-800 dark:text-green-300 dark:bg-green-950',
+  intermediate: 'border-blue-200 text-blue-700 bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:bg-blue-950',
+  advanced: 'border-purple-200 text-purple-700 bg-purple-50 dark:border-purple-800 dark:text-purple-300 dark:bg-purple-950',
+};
+
 const BookmarkedCoursesPage = () => {
   const { currentUser } = useAuth();
   const [bookmarks, setBookmarks] = useState([]);
@@ -85,33 +92,42 @@ const BookmarkedCoursesPage = () => {
                   </h3>
                   
                   <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                    <span className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      {course.rating}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      {course.duration}
-                    </span>
+                    {/* rating and duration are optional; only render when present */}
+                    {course.rating != null && (
+                      <span className="flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                        {course.rating}
+                      </span>
+                    )}
+                    {course.duration && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {course.duration}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="outline">{course.category}</Badge>
-                    <Badge variant="outline" className={
-                      course.difficulty_level === 'Beginner' ? 'border-green-200 text-green-700 bg-green-50' :
-                      course.difficulty_level === 'Intermediate' ? 'border-blue-200 text-blue-700 bg-blue-50' :
-                      'border-purple-200 text-purple-700 bg-purple-50'
-                    }>
+                    <Badge variant="outline" className={DIFFICULTY_STYLES[String(course.difficulty_level || '').toLowerCase()] || ''}>
                       {course.difficulty_level}
                     </Badge>
                   </div>
                 </CardContent>
                 <CardFooter className="p-5 pt-0 mt-auto flex gap-3">
-                  <Button className="flex-1" asChild>
-                    <a href={course.course_url || '#'} target="_blank" rel="noreferrer">
-                      View Course <ExternalLink className="ml-2 h-4 w-4" />
-                    </a>
-                  </Button>
+                  {/* The schema field is `url`; `course_url` never existed, so
+                      this link previously always pointed at '#'. */}
+                  {course.url ? (
+                    <Button className="flex-1" asChild>
+                      <a href={course.url} target="_blank" rel="noopener noreferrer">
+                        View Course <ExternalLink className="ml-2 h-4 w-4" />
+                      </a>
+                    </Button>
+                  ) : (
+                    <Button className="flex-1" disabled>
+                      No link provided
+                    </Button>
+                  )}
                   <Button 
                     variant="outline" 
                     size="icon"
@@ -132,7 +148,7 @@ const BookmarkedCoursesPage = () => {
           <h3 className="text-xl font-medium mb-2">No saved courses</h3>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">You haven't bookmarked any courses yet. Explore recommendations to find courses that match your skill gaps.</p>
           <Button asChild size="lg">
-            <Link to="/course-recommendations">Find Courses</Link>
+            <Link to="/courses">Find Courses</Link>
           </Button>
         </div>
       )}

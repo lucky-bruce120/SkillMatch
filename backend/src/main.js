@@ -27,12 +27,23 @@ const startServer = async () => {
 
   // Allowed CORS origins.
   // CORS_ORIGIN may be a comma-separated list so that both the Vite dev server
-  // (3002) and the vite preview server (3000) work in development. When it is
-  // unset we fall back to the local dev origins rather than "*", because
-  // `credentials: true` is incompatible with a wildcard origin.
-  const allowedOrigins = (process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
-    : ['http://localhost:3002', 'http://127.0.0.1:3002', 'http://localhost:3000', 'http://127.0.0.1:3000']);
+  // (3002) and the vite preview server (3000) work in development. We also
+  // allow the deployed Vercel frontend URL in production.
+  const defaultOrigins = [
+    'https://skill-match-swart-mu.vercel.app',
+    'http://localhost:3002',
+    'http://127.0.0.1:3002',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ];
+
+  const allowedOrigins = [...new Set((process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',')
+    : defaultOrigins)
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .map((origin) => origin.replace(/\/$/, '')) // normalize trailing slash differences
+  )];
 
   app.use(helmet());
   app.use(cors({

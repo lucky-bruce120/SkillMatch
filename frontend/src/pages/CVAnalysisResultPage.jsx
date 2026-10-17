@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Download, BookOpen, Map, CheckCircle2, AlertCircle, Lightbulb } from 'lucide-react';
+import { ArrowLeft, BookOpen, Map, CheckCircle2, AlertCircle, AlertTriangle, Download, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CircularProgress = ({ value, size = 120, strokeWidth = 10 }) => {
@@ -135,7 +135,14 @@ const CVAnalysisResultsPage = () => {
 
             <div className="mt-8 flex flex-wrap gap-4">
               <Button asChild>
-                <Link to={`/course-recommendations?skills=${(analysis.missing_skills || []).join(',')}`}>
+                <Link to={`/courses?skills=${encodeURIComponent(
+                  // `missing_skills` is an array of objects on newer analyses
+                  // and plain strings on older ones.
+                  (analysis.missing_skills || [])
+                    .map((entry) => (typeof entry === 'string' ? entry : entry.skill))
+                    .filter(Boolean)
+                    .join(',')
+                )}`}>
                   <BookOpen className="mr-2 h-4 w-4" /> Get Course Recommendations
                 </Link>
               </Button>
@@ -174,24 +181,120 @@ const CVAnalysisResultsPage = () => {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="text-destructive" /> Recommended Skills to Add
+              <AlertCircle className="text-destructive" /> Missing Skills
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {analysis.missing_skills && analysis.missing_skills.length > 0 ? (
-                analysis.missing_skills.map((skill, idx) => (
-                  <Badge key={idx} variant="outline" className="px-3 py-1.5 text-sm border-destructive/30 text-destructive bg-destructive/5">
-                    {skill}
-                  </Badge>
-                ))
-              ) : (
-                <p className="text-muted-foreground">Your skill profile looks complete for your target role!</p>
-              )}
-            </div>
+            {analysis.missing_skills && analysis.missing_skills.length > 0 ? (
+              <ul className="space-y-3">
+                {analysis.missing_skills.map((entry, idx) => {
+                  // Newer analyses store objects with a reason and priority;
+                  // older ones hold plain strings.
+                  const isLegacy = typeof entry === 'string';
+                  const skill = isLegacy ? entry : entry.skill;
+                  const why = isLegacy ? '' : entry.why;
+                  const priority = isLegacy ? null : entry.priority;
+
+                  return (
+                    <li key={idx} className="flex items-start gap-3">
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-destructive/30 text-destructive bg-destructive/5"
+                      >
+                        {skill}
+                      </Badge>
+                      <div className="min-w-0">
+                        {priority && (
+                          <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                            {priority} priority
+                          </p>
+                        )}
+                        {why && <p className="text-sm text-muted-foreground">{why}</p>}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-muted-foreground">
+                No gaps found against the skills employers are currently asking for.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Score breakdown */}
+      {analysis.score_breakdown && (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Score breakdown</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-6">
+            {[
+              ['Impact', analysis.score_breakdown.impact],
+              ['Clarity', analysis.score_breakdown.clarity],
+              ['Completeness', analysis.score_breakdown.completeness],
+              ['Skills coverage', analysis.score_breakdown.skillsCoverage],
+              ['ATS readability', analysis.score_breakdown.atsReadability],
+            ]
+              .filter(([, value]) => typeof value === 'number')
+              .map(([label, value]) => (
+                <div key={label}>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="text-xs text-muted-foreground">{label}</span>
+                    <span className="text-sm font-semibold">{value}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full bg-primary transition-all" style={{ width: `${value}%` }} />
+                  </div>
+                </div>
+              ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Strengths */}
+      {analysis.strengths?.length > 0 && (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" /> What is working
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {analysis.strengths.map((strength, idx) => (
+                <li key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-500" />
+                  {strength}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ATS warnings */}
+      {analysis.ats_warnings?.length > 0 && (
+        <Card className="mb-8 border-amber-500/30 bg-amber-500/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-5 w-5" /> Applicant tracking warnings
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {analysis.ats_warnings.map((warning, idx) => (
+                <li key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

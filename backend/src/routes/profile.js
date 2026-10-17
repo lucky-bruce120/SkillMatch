@@ -66,6 +66,7 @@ const formatProfile = (profile) => {
   const skills = (profile.skillDetails || []).map(mapSkill);
   const experience = (profile.experience || []).map(mapExperience);
   const education = (profile.education || []).map(mapEducation);
+  const preferences = profile.preferences || {};
   const completedFields = [
     fullName,
     profile.bio,
@@ -104,6 +105,20 @@ const formatProfile = (profile) => {
     skills,
     education,
     experience,
+    // Always return a fully-populated object so the client never has to guard
+    // against a missing `preferences` key.
+    preferences: {
+      desired_roles: preferences.desired_roles || [],
+      preferred_locations: preferences.preferred_locations || [],
+      work_arrangement: preferences.work_arrangement || 'any',
+      job_type: preferences.job_type || 'any',
+      experience_level: preferences.experience_level || 'any',
+      expected_salary_min: preferences.expected_salary_min ?? null,
+      expected_salary_max: preferences.expected_salary_max ?? null,
+      availability: preferences.availability || '',
+      open_to_relocate: Boolean(preferences.open_to_relocate),
+      profile_visible: preferences.profile_visible !== false,
+    },
     created: profile.created,
     updated: profile.updated,
   };
@@ -143,6 +158,63 @@ router.put('/', authMiddleware, async (req, res) => {
     profile.portfolio_url = updateData.portfolio_url || '';
     profile.github_url = updateData.github_url || '';
 
+    // Job preferences. Only overwrite a key when the client actually sent it,
+    // so a partial update (e.g. the personal-info form) does not wipe them.
+    if (updateData.preferences && typeof updateData.preferences === 'object') {
+      const incoming = updateData.preferences;
+      const preferences = profile.preferences || {};
+
+      if (Array.isArray(incoming.desired_roles)) {
+        preferences.desired_roles = incoming.desired_roles.map(String).map((role) => role.trim()).filter(Boolean).slice(0, 10);
+      }
+      if (Array.isArray(incoming.preferred_locations)) {
+        preferences.preferred_locations = incoming.preferred_locations.map(String).map((location) => location.trim()).filter(Boolean).slice(0, 10);
+      }
+      if (incoming.work_arrangement !== undefined) {
+        preferences.work_arrangement = ['any', 'remote', 'hybrid', 'on-site'].includes(incoming.work_arrangement)
+          ? incoming.work_arrangement
+          : 'any';
+      }
+      if (incoming.job_type !== undefined) {
+        preferences.job_type = ['any', 'full-time', 'part-time', 'contract', 'internship'].includes(incoming.job_type)
+          ? incoming.job_type
+          : 'any';
+      }
+      if (incoming.experience_level !== undefined) {
+        preferences.experience_level = ['any', 'entry', 'mid', 'senior', 'executive'].includes(incoming.experience_level)
+          ? incoming.experience_level
+          : 'any';
+      }
+      if (incoming.expected_salary_min !== undefined) {
+        const value = Number(incoming.expected_salary_min);
+        preferences.expected_salary_min = Number.isFinite(value) && value > 0 ? value : null;
+      }
+      if (incoming.expected_salary_max !== undefined) {
+        const value = Number(incoming.expected_salary_max);
+        preferences.expected_salary_max = Number.isFinite(value) && value > 0 ? value : null;
+      }
+      if (incoming.availability !== undefined) {
+        preferences.availability = String(incoming.availability || '').trim().slice(0, 80);
+      }
+      if (incoming.open_to_relocate !== undefined) {
+        preferences.open_to_relocate = Boolean(incoming.open_to_relocate);
+      }
+      if (incoming.profile_visible !== undefined) {
+        preferences.profile_visible = Boolean(incoming.profile_visible);
+      }
+
+      // Keep min/max coherent so the UI never shows max below min.
+      if (
+        preferences.expected_salary_min &&
+        preferences.expected_salary_max &&
+        preferences.expected_salary_max < preferences.expected_salary_min
+      ) {
+        preferences.expected_salary_max = preferences.expected_salary_min;
+      }
+
+      profile.preferences = preferences;
+    }
+
     await profile.save();
     res.json(formatProfile(profile));
   } catch (error) {
@@ -150,6 +222,37 @@ router.put('/', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+/**
+ * Keep the flat `skills` array in step with `skillDetails`.
+ *
+ * The profile has two skill stores: a plain `[String]` and the richer
+ * `skillDetails` array. Only `skillDetails` was ever written to, which left
+ * `skills` permanently empty and made skill-count stats read zero while
+ * job-market analytics double-counted nothing. Every skill write now mirrors
+ * across both.
+ */
+const syncSkillNames = (profile) => {
+  const seen = new Set();
+  profile.skills = (profile.skillDetails || [])
+    .map((entry) => (entry.skill_name || '').trim())
+    .filter((name) => {
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+/** Canonical proficiency levels, so matching does not have to guess casing. */
+const PROFICIENCY_LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
+
+const normalizeProficiency = (value, fallback = 'Beginner') => {
+  const match = PROFICIENCY_LEVELS.find(
+    (level) => level.toLowerCase() === String(value || '').trim().toLowerCase()
+  );
+  return match || fallback;
+};
 
 router.get('/skills', authMiddleware, async (req, res) => {
   try {
@@ -164,11 +267,25 @@ router.get('/skills', authMiddleware, async (req, res) => {
 router.post('/skills', authMiddleware, async (req, res) => {
   try {
     const profile = await ensureProfile(req.userId);
+
+    const skillName = (req.body.skill_name || '').trim();
+    if (!skillName) {
+      return res.status(400).json({ error: 'skill_name is required' });
+    }
+
+    const alreadyListed = (profile.skillDetails || []).some(
+      (entry) => String(entry.skill_name).trim().toLowerCase() === skillName.toLowerCase()
+    );
+    if (alreadyListed) {
+      return res.status(400).json({ error: 'That skill is already on your profile' });
+    }
+
     profile.skillDetails.push({
-      skill_name: req.body.skill_name || '',
-      proficiency_level: req.body.proficiency_level || 'Beginner',
-      endorsement_count: req.body.endorsement_count || 0,
+      skill_name: skillName,
+      proficiency_level: normalizeProficiency(req.body.proficiency_level),
+      endorsement_count: Number(req.body.endorsement_count) || 0,
     });
+    syncSkillNames(profile);
     await profile.save();
     res.status(201).json(mapSkill(profile.skillDetails[profile.skillDetails.length - 1]));
   } catch (error) {
@@ -186,8 +303,9 @@ router.put('/skills/:id', authMiddleware, async (req, res) => {
     }
 
     skill.skill_name = req.body.skill_name || skill.skill_name;
-    skill.proficiency_level = req.body.proficiency_level || skill.proficiency_level;
+    skill.proficiency_level = normalizeProficiency(req.body.proficiency_level, skill.proficiency_level);
     skill.endorsement_count = req.body.endorsement_count ?? skill.endorsement_count;
+    syncSkillNames(profile);
     await profile.save();
     res.json(mapSkill(skill));
   } catch (error) {
@@ -205,6 +323,7 @@ router.delete('/skills/:id', authMiddleware, async (req, res) => {
     }
 
     skill.deleteOne();
+    syncSkillNames(profile);
     await profile.save();
     res.json({ success: true });
   } catch (error) {
