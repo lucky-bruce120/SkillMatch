@@ -66,4 +66,10 @@ jobSchema.pre('save', function () {
   this.updated = Date.now();
 });
 
+// Expose the `id` virtual in JSON so API responses include both `_id` and
+// `id`. Without this, /jobs/search returns documents with only `_id`, and any
+// client reading `job.id` gets `undefined` (e.g. navigating to /apply/undefined).
+jobSchema.set('toJSON', { virtuals: true });
+jobSchema.set('toObject', { virtuals: true });
+
 export default mongoose.model('Job', jobSchema);

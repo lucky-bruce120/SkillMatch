@@ -112,7 +112,8 @@ const JobDetailsPage = () => {
       toast.success("Application submitted successfully!");
     } catch (error) {
       console.error("Application error:", error);
-      toast.error("Failed to submit application");
+      const serverMessage = typeof error?.body === 'object' && error?.body?.error;
+      toast.error(serverMessage || "Failed to submit application");
     } finally {
       setApplying(false);
     }

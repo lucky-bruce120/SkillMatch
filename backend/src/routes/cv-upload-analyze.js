@@ -8,7 +8,8 @@ import JobSeekerProfile from '../models/JobSeekerProfile.js';
 import Job from '../models/Job.js';
 import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
-import { requestJson, clampNumber, toStringArray, resolveSkillCoverage } from '../utils/ai.js';
+import { requestJsonWithFallback, clampNumber, toStringArray, resolveSkillCoverage } from '../utils/ai.js';
+import { analyseCvLocally } from '../utils/cvAnalysis.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -116,6 +117,7 @@ RULES
 
 /* --------------------------------------------------------------- normalising */
 
+/** Normalise a model response into the stored/returned shape. */
 const normaliseAnalysis = (raw, cvText) => {
   const breakdownRaw = raw?.scoreBreakdown || {};
   const breakdown = {
@@ -163,6 +165,51 @@ const normaliseAnalysis = (raw, cvText) => {
     // Word count is a useful reality check: a 40-word "CV" is worth telling
     // the user about explicitly rather than pretending the score is meaningful.
     wordCount: cvText.trim().split(/\s+/).filter(Boolean).length,
+  };
+};
+
+/* --------------------------------------------------------------- error mapping */
+
+/**
+ * Turn an AI failure into something the user can act on.
+ *
+ * The OpenAI SDK surfaces quota/billing problems as a 429 with
+ * `insufficient_quota`, and a bad key as a 401. Reporting those as a generic
+ * "we could not analyse that CV" (which is also what a genuinely unreadable
+ * file produces) sent people off to re-upload a perfectly good CV, so the
+ * distinctions matter.
+ */
+const describeAiError = (error) => {
+  const status = error?.status ?? error?.response?.status;
+  const code = error?.code ?? error?.error?.code;
+  const message = error?.message || '';
+
+  if (message.includes('OPENAI_API_KEY') || status === 401 || code === 'invalid_api_key') {
+    return {
+      status: 503,
+      error:
+        'CV analysis is unavailable because the AI service key is missing or was rejected. Ask the site admin to check OPENAI_API_KEY in backend/.env.',
+    };
+  }
+
+  if (status === 429 || code === 'insufficient_quota' || message.includes('no credits remaining')) {
+    return {
+      status: 503,
+      error:
+        'CV analysis is unavailable right now because the AI service account has run out of credits. Your CV was not saved - try again once billing is topped up.',
+    };
+  }
+
+  if (status === 429) {
+    return {
+      status: 429,
+      error: 'The AI service is busy right now. Please wait a moment and try again.',
+    };
+  }
+
+  return {
+    status: 502,
+    error: 'We could not analyse that CV. Please try again, or upload a different file.',
   };
 };
 
@@ -223,16 +270,27 @@ router.post('/', authMiddleware, upload.single('cv'), async (req, res) => {
     const marketSkills = [...demand.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20)
-      .map(([skill]) => skill);
+      .map(([skill, openings]) => ({ skill, openings }));
 
-    const raw = await requestJson({
+    // The AI review is the richer path, but it must never be the only path: an
+    // out-of-credit key, a rate limit or an API outage used to turn every
+    // upload into a 502 with nothing to show. The local analyser gives real
+    // feedback either way, and the response says which one produced it.
+    const { data: raw, aiGenerated, aiError } = await requestJsonWithFallback({
+      label: 'cv-analyze',
       system: SYSTEM,
-      user: buildPrompt(truncated, profileSkills, marketSkills),
+      user: buildPrompt(truncated, profileSkills, marketSkills.map((entry) => entry.skill)),
       temperature: 0.3,
       maxTokens: 2600,
+      fallback: () =>
+        analyseCvLocally(truncated, {
+          profileSkills,
+          marketSkills,
+          textExtractable: true,
+        }),
     });
 
-    const analysis = normaliseAnalysis(raw, truncated);
+    const analysis = aiGenerated ? normaliseAnalysis(raw, truncated) : raw;
 
     // Personalised recommendations from the skills actually found in the CV.
     const cvSkills = [...new Set([...analysis.extractedSkills, ...profileSkills])];
@@ -300,18 +358,58 @@ router.post('/', authMiddleware, upload.single('cv'), async (req, res) => {
       sections: analysis.sections,
       wordCount: analysis.wordCount,
       recommendations,
+      // Lets the UI be honest about which analyser produced this result.
+      aiGenerated,
+      aiError,
     });
   } catch (error) {
     logger.error('CV upload analyze error:', error);
 
-    // An OpenAI failure should say so rather than reporting a generic error,
-    // because "AI unavailable" and "your CV is unreadable" need different fixes.
-    const message =
-      error?.message?.includes('OPENAI_API_KEY') || error?.status === 401 || error?.code === 'invalid_api_key'
-        ? 'CV analysis is unavailable right now because the AI service is not configured or was rejected. Your CV was not saved.'
-        : 'We could not analyse that CV. Please try again, or upload a different file.';
+    // Reaching here means something failed outside the AI wrapper - most
+    // likely the database write. If we do have the text, still try the local
+    // analyser rather than throwing the upload away.
+    if (cvText.trim()) {
+      try {
+        const analysis = analyseCvLocally(cvText, { textExtractable: true });
+        const record = await CVAnalysis.create({
+          job_seeker_id: req.userId,
+          cv_file: req.file.originalname,
+          analysis_result: analysis,
+          cv_score: analysis.cvScore,
+          extracted_skills: analysis.extractedSkills,
+          missing_skills: analysis.missingSkills,
+          suggestions: analysis.actionItems,
+        });
 
-    res.status(502).json({ error: message });
+        return res.status(201).json({
+          id: record.id,
+          created: record.created,
+          cvFile: record.cv_file,
+          cvScore: analysis.cvScore,
+          scoreBreakdown: analysis.scoreBreakdown,
+          summary: analysis.summary,
+          strengths: analysis.strengths,
+          extractedSkills: analysis.extractedSkills,
+          skillGaps: analysis.missingSkills,
+          missingSkills: analysis.missingSkills,
+          suggestions: analysis.actionItems,
+          actionItems: analysis.actionItems,
+          atsWarnings: analysis.atsWarnings,
+          sections: analysis.sections,
+          wordCount: analysis.wordCount,
+          recommendations: [],
+          aiGenerated: false,
+          aiError: error?.message || 'AI service unavailable',
+        });
+      } catch (fallbackError) {
+        logger.error('Local CV analysis fallback failed:', fallbackError);
+      }
+    }
+
+    // "AI unavailable" and "your CV is unreadable" need different fixes, so the
+    // AI-specific cases get their own message and status.
+    const { status, error: message } = describeAiError(error);
+    res.status(status).json({ error: message });
   }
 });
 

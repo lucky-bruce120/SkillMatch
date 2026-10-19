@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import mongoose from 'mongoose';
 import Application from '../models/Application.js';
 import Job from '../models/Job.js';
 import JobSeekerProfile from '../models/JobSeekerProfile.js';
@@ -18,6 +19,10 @@ router.post('/', authMiddleware, async (req, res) => {
 
     if (!jobId) {
       return res.status(400).json({ error: 'jobId is required' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(jobId)) {
+      return res.status(400).json({ error: 'Invalid jobId format' });
     }
 
     // Verify job exists
@@ -78,6 +83,10 @@ router.get('/check', authMiddleware, async (req, res) => {
   try {
     const { job_id } = req.query;
     const jobSeekerId = req.userId;
+
+    if (!job_id || !mongoose.Types.ObjectId.isValid(job_id)) {
+      return res.status(400).json({ applied: false, error: 'Invalid job_id' });
+    }
 
     const application = await Application.findOne({
       job_id: job_id,

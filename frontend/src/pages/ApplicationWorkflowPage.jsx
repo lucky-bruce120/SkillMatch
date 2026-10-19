@@ -84,7 +84,8 @@ const ApplicationWorkflowPage = () => {
       toast.success("Application submitted successfully!");
     } catch (error) {
       console.error("Application error:", error);
-      toast.error("Failed to submit application. Please try again.");
+      const serverMessage = typeof error?.body === 'object' && error?.body?.error;
+      toast.error(serverMessage || "Failed to submit application. Please try again.");
     } finally {
       setSubmitting(false);
     }
