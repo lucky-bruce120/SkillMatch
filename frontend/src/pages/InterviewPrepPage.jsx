@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import apiServerClient from '@/lib/apiServerClient.js';
+import { toast } from 'sonner';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx';
@@ -11,9 +12,11 @@ import { Skeleton } from '@/components/ui/skeleton.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
 import { Button } from '@/components/ui/button.jsx';
 import { Alert, AlertDescription } from '@/components/ui/alert.jsx';
+import { Textarea } from '@/components/ui/textarea.jsx';
+import { Label } from '@/components/ui/label.jsx';
 import {
   Lightbulb, MessageSquare, CheckSquare, Link as LinkIcon, Search,
-  Sparkles, Target, AlertTriangle, Calendar, Timer, ArrowUpRight, RefreshCw,
+  Sparkles, Target, AlertTriangle, Calendar, Timer, ArrowUpRight, RefreshCw, Brain, Send,
 } from 'lucide-react';
 
 const DIFFICULTY_STYLES = {
@@ -40,6 +43,9 @@ const InterviewPrepPage = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAnswer, setShowAnswer] = useState(() => new Set());
+  const [aiAnswer, setAiAnswer] = useState('');
+  const [aiGuidance, setAiGuidance] = useState(null);
+  const [aiGuidanceLoading, setAiGuidanceLoading] = useState(false);
 
   // Roles come from the API so the list reflects what the database actually
   // holds, rather than five strings hardcoded in the component.
@@ -201,8 +207,9 @@ const InterviewPrepPage = () => {
             )}
 
             <Tabs defaultValue="practice">
-              <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto p-1 mb-6">
+              <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 h-auto p-1 mb-6">
                 <TabsTrigger value="practice" className="py-2.5">Practice</TabsTrigger>
+                <TabsTrigger value="ai-guidance" className="py-2.5">AI Guidance</TabsTrigger>
                 <TabsTrigger value="questions" className="py-2.5">Question bank</TabsTrigger>
                 <TabsTrigger value="tips" className="py-2.5">Pro tips</TabsTrigger>
                 <TabsTrigger value="checklist" className="py-2.5">
@@ -304,6 +311,135 @@ const InterviewPrepPage = () => {
                     );
                   })
                 )}
+              </TabsContent>
+
+              {/* ------------------------------------------------ AI GUIDANCE */}
+              <TabsContent value="ai-guidance" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Brain className="h-5 w-5 text-primary" />
+                      AI Interview Guidance
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Practice your answer and get AI feedback tailored to the role you're interviewing for.
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="ai-question">Interview Question</Label>
+                      <Textarea
+                        id="ai-question"
+                        placeholder="e.g., Tell me about yourself. or paste a specific question from your interview..."
+                        value={aiAnswer ? '' : ''}
+                        onChange={() => {}}
+                        className="min-h-[80px]"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ai-response">Your Answer</Label>
+                      <Textarea
+                        id="ai-response"
+                        placeholder="Write your response here..."
+                        value={aiAnswer}
+                        onChange={(e) => setAiAnswer(e.target.value)}
+                        className="min-h-[150px]"
+                      />
+                    </div>
+                    <Button 
+                      onClick={async () => {
+                        if (!aiAnswer.trim()) {
+                          toast.error('Please provide your answer');
+                          return;
+                        }
+                        setAiGuidanceLoading(true);
+                        setAiGuidance(null);
+                        try {
+                          const result = await apiServerClient.fetch('/interview-prep/guidance', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ role, answer: aiAnswer })
+                          });
+                          setAiGuidance(result);
+                        } catch (error) {
+                          toast.error('Failed to get AI guidance');
+                        } finally {
+                          setAiGuidanceLoading(false);
+                        }
+                      }}
+                      disabled={aiGuidanceLoading || !aiAnswer.trim()}
+                    >
+                      {aiGuidanceLoading ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          Get AI Guidance
+                        </>
+                      )}
+                    </Button>
+
+                    {aiGuidance && (
+                      <div className="space-y-4 mt-6">
+                        <Card className="bg-primary/5 border-primary/20">
+                          <CardHeader>
+                            <CardTitle className="text-base">Overall Feedback</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-sm">{aiGuidance.feedback}</p>
+                          </CardContent>
+                        </Card>
+                        {aiGuidance.strengths && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-base text-green-600">Strengths</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <ul className="space-y-2">
+                                {aiGuidance.strengths.map((s, i) => (
+                                  <li key={i} className="flex gap-2 text-sm">
+                                    <CheckSquare className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                                    {s}
+                                  </li>
+                                ))}
+                              </ul>
+                            </CardContent>
+                          </Card>
+                        )}
+                        {aiGuidance.improvements && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-base text-amber-600">Improvements</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <ul className="space-y-2">
+                                {aiGuidance.improvements.map((imp, i) => (
+                                  <li key={i} className="flex gap-2 text-sm">
+                                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                                    {imp}
+                                  </li>
+                                ))}
+                              </ul>
+                            </CardContent>
+                          </Card>
+                        )}
+                        {aiGuidance.suggestedAnswer && (
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-base">Suggested Improved Answer</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <p className="text-sm whitespace-pre-wrap">{aiGuidance.suggestedAnswer}</p>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* -------------------------------------------- QUESTION BANK */}

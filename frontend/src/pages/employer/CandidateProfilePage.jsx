@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MapPin, Phone, Mail, FileText, Calendar } from 'lucide-react';
+import { ArrowLeft, MapPin, Phone, Mail, FileText, Calendar, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import InterviewInviteDialog from '@/components/InterviewInviteDialog.jsx';
 
 const CandidateProfilePage = () => {
   const { id } = useParams();
@@ -18,6 +19,8 @@ const CandidateProfilePage = () => {
   const [skills, setSkills] = useState([]);
   const [experience, setExperience] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [applications, setApplications] = useState([]);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   useEffect(() => {
     const fetchCandidateData = async () => {
@@ -38,8 +41,21 @@ const CandidateProfilePage = () => {
       }
     };
 
+    const fetchApplications = async () => {
+      try {
+        const data = await apiServerClient.fetch(`/employer/candidates/${id}/applications`, {
+          headers: { Authorization: `Bearer ${currentUser?.token}` },
+        });
+        setApplications(Array.isArray(data) ? data : []);
+      } catch {
+        // The interview button needs an application; if there is none the
+        // button stays disabled.
+      }
+    };
+
     if (currentUser?.token) {
       fetchCandidateData();
+      fetchApplications();
     }
   }, [id, currentUser]);
 
@@ -78,9 +94,20 @@ const CandidateProfilePage = () => {
           </div>
         </div>
         <div className="flex w-full gap-3 md:w-auto">
-          <Button onClick={() => toast('Interview scheduling coming soon')}>
+          <Button
+            onClick={() => setInviteOpen(true)}
+            disabled={applications.length === 0}
+            title={applications.length === 0 ? 'This candidate has not applied to any of your jobs' : 'Invite to interview'}
+          >
             <Calendar className="mr-2 h-4 w-4" /> Invite to Interview
           </Button>
+          {profile?.user_id && (
+            <Button variant="outline" asChild>
+              <a href={`/candidate/${profile.user_id}`} target="_blank" rel="noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" /> Public profile
+              </a>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -146,6 +173,14 @@ const CandidateProfilePage = () => {
           </Card>
         )}
       </div>
+
+      <InterviewInviteDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        applicationId={applications[0]?._id}
+        candidateName={profile?.full_name || user?.email}
+        jobTitle={applications[0]?.job_id?.title}
+      />
     </div>
   );
 };

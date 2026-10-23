@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient.js';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, Heart, Eye, ArrowRight, Briefcase, Plus, Target } from 'lucide-react';
+import { useRealtime } from '@/hooks/useRealtime.js';
 
 const DashboardPage = () => {
   const { currentUser } = useAuth();
@@ -17,6 +18,19 @@ const DashboardPage = () => {
   const [stats, setStats] = useState({ apps: 0, saved: 0 });
   const [sections, setSections] = useState({ skills: 0, experience: 0, education: 0 });
   const [loading, setLoading] = useState(true);
+
+  const fetchApplications = useCallback(async () => {
+    try {
+      const appsData = await apiServerClient.fetch('/apply-job', {
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+      });
+      const list = Array.isArray(appsData) ? appsData : [];
+      setApplications(list.slice(0, 5));
+      setStats((current) => ({ ...current, apps: list.length }));
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+    }
+  }, [currentUser?.token]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -33,20 +47,17 @@ const DashboardPage = () => {
         }
 
         // Fetch applications
-        const appsData = await apiServerClient.fetch('/apply-job', {
-          headers: { 'Authorization': `Bearer ${currentUser?.token}` }
-        });
-        setApplications(appsData.slice(0, 5));
+        await fetchApplications();
 
         // Fetch saved jobs count
         const savedData = await apiServerClient.fetch('/saved-jobs', {
           headers: { 'Authorization': `Bearer ${currentUser?.token}` }
         });
 
-        setStats({
-          apps: appsData.length,
-          saved: savedData.length
-        });
+        setStats((current) => ({
+          apps: current.apps,
+          saved: Array.isArray(savedData) ? savedData.length : 0
+        }));
 
         // Counts for the profile completeness card. Each is independent so one
         // failing request cannot blank the whole dashboard.
@@ -78,7 +89,29 @@ const DashboardPage = () => {
     if (currentUser) {
       fetchDashboardData();
     }
-  }, [currentUser]);
+  }, [currentUser, fetchApplications]);
+
+  // Status changes land here over the live stream, so the dashboard reflects
+  // an accepted or rejected application straight away.
+  useRealtime({
+    'application:status': (payload) => {
+      if (payload?.resumed) {
+        fetchApplications();
+        return;
+      }
+      if (!payload?.applicationId) return;
+      setApplications((current) =>
+        current.map((app) =>
+          (app._id || app.id) === payload.applicationId
+            ? { ...app, status: payload.status, feedback: payload.feedback || app.feedback }
+            : app
+        )
+      );
+    },
+    'application:created': () => {
+      fetchApplications();
+    },
+  });
 
   // The items that make a profile useful for skill-based job matching. Each
   // knows which Profile Settings tab completes it.

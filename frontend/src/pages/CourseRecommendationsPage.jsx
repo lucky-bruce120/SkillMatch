@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient.js';
@@ -30,7 +30,15 @@ const CourseRecommendationsPage = () => {
   // The skill gaps arrive as `?skills=react,kubernetes` from the CV analyser
   // and the skill-gap page.
   const skillGaps = searchParams.get('skills') || '';
-  const gapList = skillGaps.split(',').map((skill) => skill.trim()).filter(Boolean);
+
+  // This MUST be memoised. Building the array inline gave it a new identity on
+  // every render, which made `fetchCourses` change identity, which re-ran the
+  // effect, which set state, which rendered again - an endless fetch loop
+  // that pinned the CPU and eventually froze the tab (worst on phones).
+  const gapList = useMemo(
+    () => skillGaps.split(',').map((skill) => skill.trim()).filter(Boolean),
+    [skillGaps]
+  );
 
   const [courses, setCourses] = useState([]);
   const [uncoveredSkills, setUncoveredSkills] = useState([]);
@@ -57,8 +65,8 @@ const CourseRecommendationsPage = () => {
         `/courses/recommendations${query ? `?${query}` : ''}`
       );
 
-      setCourses(result.courses || []);
-      setUncoveredSkills(result.uncoveredSkills || []);
+      setCourses(Array.isArray(result?.courses) ? result.courses : []);
+      setUncoveredSkills(Array.isArray(result?.uncoveredSkills) ? result.uncoveredSkills : []);
     } catch (err) {
       setError(err.body?.error || 'We could not load courses. Please try again.');
     } finally {
@@ -75,7 +83,10 @@ const CourseRecommendationsPage = () => {
   useEffect(() => {
     apiServerClient
       .fetch('/courses/categories')
-      .then((result) => setFacets({ categories: result.categories || [], difficulties: result.difficulties || [] }))
+      .then((result) => setFacets({
+        categories: Array.isArray(result?.categories) ? result.categories : [],
+        difficulties: Array.isArray(result?.difficulties) ? result.difficulties : []
+      }))
       .catch(() => setFacets({ categories: [], difficulties: [] }));
   }, []);
 
@@ -85,7 +96,8 @@ const CourseRecommendationsPage = () => {
       const bookmarks = await apiServerClient.fetch('/bookmarked-courses', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setBookmarkedIds(new Set(bookmarks.map((bookmark) => String(bookmark.course_id))));
+      const list = Array.isArray(bookmarks) ? bookmarks : [];
+      setBookmarkedIds(new Set(list.map((bookmark) => String(bookmark.course_id))));
     } catch {
       // Bookmarks are a nice-to-have; a failure should not break the page.
     }
@@ -140,7 +152,12 @@ const CourseRecommendationsPage = () => {
 
   const visibleCourses = courses.filter((course) => {
     if (filters.category !== 'all' && course.category !== filters.category) return false;
-    if (filters.search && !course.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
+    if (filters.search) {
+      // Coerce before toLowerCase: on some devices/cached payloads a course
+      // field can arrive missing, and the unguarded call crashed the page.
+      const title = String(course.title || '').toLowerCase();
+      if (!title.includes(filters.search.toLowerCase())) return false;
+    }
     return true;
   });
 
@@ -200,11 +217,14 @@ const CourseRecommendationsPage = () => {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Levels</SelectItem>
-            {facets.difficulties.map((level) => (
-              <SelectItem key={level} value={level} className="capitalize">
-                {level.charAt(0).toUpperCase() + level.slice(1)}
-              </SelectItem>
-            ))}
+            {facets.difficulties.map((level) => {
+              const label = String(level || '');
+              return (
+                <SelectItem key={label} value={label} className="capitalize">
+                  {label.charAt(0).toUpperCase() + label.slice(1)}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>

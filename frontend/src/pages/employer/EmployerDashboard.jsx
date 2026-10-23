@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import apiServerClient from '@/lib/apiServerClient.js';
@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Briefcase, Users, Calendar, Plus, ArrowRight } from 'lucide-react';
+import { useRealtime } from '@/hooks/useRealtime.js';
 
 const EmployerDashboard = () => {
   const { currentUser } = useAuth();
@@ -14,32 +15,37 @@ const EmployerDashboard = () => {
   const [recentApps, setRecentApps] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { 
-    const fetchDashboardData = async () => {
-      try {
-        // Fetch dashboard stats
-        const statsData = await apiServerClient.fetch('/employer/dashboard/stats', {
-          headers: { 'Authorization': `Bearer ${currentUser?.token}` }
-        });
-        setStats(statsData);
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      // Fetch dashboard stats
+      const statsData = await apiServerClient.fetch('/employer/dashboard/stats', {
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+      });
+      setStats(statsData);
 
-        // Fetch recent applications
-        const appsData = await apiServerClient.fetch('/employer/dashboard/recent-applications', {
-          headers: { 'Authorization': `Bearer ${currentUser?.token}` }
-        });
-        setRecentApps(appsData);
+      // Fetch recent applications
+      const appsData = await apiServerClient.fetch('/employer/dashboard/recent-applications', {
+        headers: { 'Authorization': `Bearer ${currentUser?.token}` }
+      });
+      setRecentApps(Array.isArray(appsData) ? appsData : []);
+    } catch (error) {
+      console.error("Error fetching employer dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser?.token]);
 
-      } catch (error) {
-        console.error("Error fetching employer dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+  useEffect(() => {
     if (currentUser) {
       fetchDashboardData();
     }
-  }, [currentUser]);
+  }, [currentUser, fetchDashboardData]);
+
+  // A new application shows up on the dashboard straight away.
+  useRealtime({
+    'application:new': () => fetchDashboardData(),
+    'application:status': () => fetchDashboardData(),
+  });
 
   if (loading) {
     return (

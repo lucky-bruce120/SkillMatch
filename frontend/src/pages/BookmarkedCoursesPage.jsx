@@ -29,7 +29,7 @@ const BookmarkedCoursesPage = () => {
       const bookmarks = await apiServerClient.fetch('/bookmarked-courses', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      setBookmarks(bookmarks);
+      setBookmarks(Array.isArray(bookmarks) ? bookmarks : []);
     } catch (error) {
       console.error("Error fetching bookmarks:", error);
       toast.error("Failed to load saved courses");

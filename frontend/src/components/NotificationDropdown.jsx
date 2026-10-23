@@ -23,18 +23,20 @@ const NotificationDropdown = ({ isOpen, onClose, onCountUpdate }) => {
       const result = await apiServerClient.fetch('/notifications', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setNotifications(result);
-      onCountUpdate(result.filter((notification) => !notification.isRead).length);
+      const list = Array.isArray(result) ? result : [];
+      setNotifications(list);
+      const unread = list.filter((notification) => !notification.isRead).length;
+      onCountUpdate(unread);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
-  }, [token, onCountUpdate]);
+  }, [token]);
 
   useEffect(() => {
     if (isOpen && token) {
       fetchNotifications();
     }
-  }, [isOpen, token, fetchNotifications]);
+  }, [isOpen, token]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {

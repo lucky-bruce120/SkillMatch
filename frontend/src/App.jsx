@@ -31,6 +31,7 @@ import CareerPathPage from './pages/CareerPathPage.jsx';
 import SkillGapAnalysisPage from './pages/SkillGapAnalysisPage.jsx';
 import BookmarkedCoursesPage from './pages/BookmarkedCoursesPage.jsx';
 import ApplicationWorkflowPage from './pages/ApplicationWorkflowPage.jsx';
+import MyInterviewsPage from './pages/MyInterviewsPage.jsx';
 
 // Employer Pages
 import EmployerDashboard from './pages/employer/EmployerDashboard.jsx';
@@ -40,6 +41,9 @@ import JobApplicantsPage from './pages/employer/JobApplicantsPage.jsx';
 import CandidateProfilePage from './pages/employer/CandidateProfilePage.jsx';
 import EmployerApplicationDashboard from './pages/employer/EmployerApplicationDashboard.jsx';
 import EmployerSettingsPage from './pages/employer/EmployerSettingsPage.jsx';
+import EmployerInterviewsPage from './pages/employer/EmployerInterviewsPage.jsx';
+
+import PublicCandidateProfilePage from './pages/PublicCandidateProfilePage.jsx';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard.jsx';
@@ -63,11 +67,15 @@ function App() {
       <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/jobs" element={<JobListingsPage />} />
               <Route path="/job/:id" element={<JobDetailsPage />} />
+              {/* A candidate's profile, viewable by anyone with the link so an
+                  employer can look at a candidate's details directly. */}
+              <Route path="/candidate/:id" element={<PublicCandidateProfilePage />} />
 
               {/* Job Seeker Protected Routes */}
               <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['Job Seeker']}><DashboardPage /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute allowedRoles={['Job Seeker']}><ProfileSettingsPage /></ProtectedRoute>} />
               <Route path="/applications" element={<ProtectedRoute allowedRoles={['Job Seeker']}><ApplicationsPage /></ProtectedRoute>} />
+              <Route path="/interviews" element={<ProtectedRoute allowedRoles={['Job Seeker']}><MyInterviewsPage /></ProtectedRoute>} />
               <Route path="/apply/:jobId" element={<ProtectedRoute allowedRoles={['Job Seeker']}><ApplicationWorkflowPage /></ProtectedRoute>} />
               <Route path="/saved-jobs" element={<ProtectedRoute allowedRoles={['Job Seeker']}><SavedJobsPage /></ProtectedRoute>} />
               <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
@@ -93,7 +101,7 @@ function App() {
               <Route path="/employer/candidate/:id" element={<ProtectedRoute allowedRoles={['Employer']}><CandidateProfilePage /></ProtectedRoute>} />
               <Route path="/employer/applications" element={<ProtectedRoute allowedRoles={['Employer']}><EmployerApplicationDashboard /></ProtectedRoute>} />
               <Route path="/employer/settings" element={<ProtectedRoute allowedRoles={['Employer']}><EmployerSettingsPage /></ProtectedRoute>} />
-              <Route path="/employer/interviews" element={<ProtectedRoute allowedRoles={['Employer']}><div className="container mx-auto py-8 text-center">Interviews Page Coming Soon</div></ProtectedRoute>} />
+              <Route path="/employer/interviews" element={<ProtectedRoute allowedRoles={['Employer']}><EmployerInterviewsPage /></ProtectedRoute>} />
 
               {/* Admin Protected Routes */}
               <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['Admin']}><AdminDashboard /></ProtectedRoute>} />

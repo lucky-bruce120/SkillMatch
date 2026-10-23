@@ -5,7 +5,7 @@ import apiServerClient from '@/lib/apiServerClient.js';
 
 import { Button } from '@/components/ui/button.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
-import { Briefcase, Menu, X, Bell, ChevronDown, Settings, Heart, Bookmark, FileText, ShieldCheck, LogOut } from 'lucide-react';
+import { Briefcase, Menu, X, Bell, ChevronDown, Settings, Heart, Bookmark, FileText, ShieldCheck, LogOut, Calendar } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,14 +16,37 @@ import {
 } from "@/components/ui/dropdown-menu.jsx";
 import NotificationDropdown from './NotificationDropdown.jsx';
 import { getDisplayName } from '@/lib/displayName.js';
+import { useRealtime, notifyUser, requestNotificationPermission } from '@/hooks/useRealtime.js';
+import { toast } from 'sonner';
 
 const Header = () => {
   const { isAuthenticated, currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [profilePic, setProfilePic] = useState(currentUser?.profilePicture || null);
+
+  useEffect(() => {
+    setProfilePic(currentUser?.profilePicture || null);
+  }, [currentUser?.profilePicture]);
+
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      setProfilePic(currentUser?.profilePicture || null);
+    };
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+    return () => window.removeEventListener('profileUpdated', handleProfileUpdate);
+  }, [currentUser?.profilePicture]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
+  );
+
+  // The browser notification API is not available everywhere (it needs a
+  // secure context and is missing on some desktop browsers).
+  const canUsePushNotifications =
+    typeof window !== 'undefined' && 'Notification' in window && notificationPermission !== 'unsupported';
 
   const token = currentUser?.token;
 
@@ -64,6 +87,33 @@ const Header = () => {
     return () => clearInterval(interval);
   }, [isAuthenticated, token, fetchUnreadCount]);
 
+  // Live updates. The server pushes a change the moment it happens, so the
+  // badge and the toast appear without the user refreshing or waiting for
+  // the 30 second poll.
+  //
+  // Every state change creates a notification, and the server emits
+  // `notification:new` for it. Pages subscribe to the domain events
+  // (`application:new`, `application:status`, `interview:invited`) to refresh
+  // their data. Toasting those here as well would show every change twice.
+  useRealtime({
+    'notification:new': (payload) => {
+      // Only increment once per notification
+      setUnreadCount((count) => count + 1);
+      // On a phone the app is often in the background, so a system
+      // notification is the only way the user finds out.
+      const shown = notifyUser({
+        title: payload?.title || 'New notification',
+        body: payload?.message || '',
+        tag: payload?.id || payload?.notificationId,
+      });
+      if (!shown && document.visibilityState === 'visible') {
+        toast.info(payload?.title || 'New notification', {
+          description: payload?.message,
+        });
+      }
+    },
+  });
+
   const handleLogout = () => {
     logout();
     navigate('/');
@@ -80,6 +130,7 @@ const Header = () => {
         { name: 'Dashboard', path: '/employer/dashboard' },
         { name: 'Manage Jobs', path: '/employer/jobs' },
         { name: 'Applicants', path: '/employer/applications' },
+        { name: 'Interviews', path: '/employer/interviews' },
       ];
     } else if (currentUser?.role === 'Admin') {
       navLinks = [
@@ -163,18 +214,41 @@ const Header = () => {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="relative h-8 w-8 rounded-full ml-2" aria-label="Account menu">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-bold">
-                        {userInitial}
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-bold overflow-hidden">
+                        {profilePic ? (
+                          <img 
+                            src={`${apiServerClient.baseUrl}${profilePic}`} 
+                            alt={userName} 
+                            className="h-full w-full object-cover" 
+                          />
+                        ) : (
+                          userInitial
+                        )}
                       </div>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-60">
                     <DropdownMenuLabel className="font-normal">
                       <div className="flex flex-col space-y-1">
-                        {/* The User model has no `name`, so this used to always
-                            render the literal "User". */}
-                        <p className="text-sm font-medium leading-none">{userName}</p>
-                        <p className="text-xs leading-none text-muted-foreground break-all">{currentUser?.email}</p>
+                        <div className="flex items-center gap-2">
+                          <div className="h-10 w-10 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center">
+                            {profilePic ? (
+                              <img 
+                                src={`${apiServerClient.baseUrl}${profilePic}`} 
+                                alt={userName} 
+                                className="h-full w-full object-cover" 
+                              />
+                            ) : (
+                              <span className="text-sm font-bold text-primary">{userInitial}</span>
+                            )}
+                          </div>
+                          <div className="flex flex-col">
+                            {/* The User model has no `name`, so this used to always
+                                render the literal "User". */}
+                            <p className="text-sm font-medium leading-none">{userName}</p>
+                            <p className="text-xs leading-none text-muted-foreground break-all">{currentUser?.email}</p>
+                          </div>
+                        </div>
                         <Badge variant="secondary" className="w-fit mt-2 text-[10px]">{currentUser?.role}</Badge>
                       </div>
                     </DropdownMenuLabel>
@@ -204,6 +278,11 @@ const Header = () => {
                         <DropdownMenuItem asChild>
                           <Link to="/applications">
                             <FileText className="mr-2 h-4 w-4" /> My Applications
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link to="/interviews">
+                            <Calendar className="mr-2 h-4 w-4" /> My Interviews
                           </Link>
                         </DropdownMenuItem>
                       </>
@@ -306,10 +385,35 @@ const Header = () => {
                   <>
                     <Link to="/saved-jobs" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>Saved Jobs</Link>
                     <Link to="/applications" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>My Applications</Link>
+                    <Link to="/interviews" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>My Interviews</Link>
                   </>
                 )}
                 {currentUser?.role === 'Employer' && (
-                  <Link to="/employer/applications" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>Review Applicants</Link>
+                  <>
+                    <Link to="/employer/applications" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>Review Applicants</Link>
+                    <Link to="/employer/interviews" className="block rounded-md px-3 py-2 text-base font-medium text-muted-foreground hover:bg-accent" onClick={() => setIsMobileMenuOpen(false)}>Interviews</Link>
+                  </>
+                )}
+
+                {/* On a phone the app is usually in the background, so ask for
+                    permission to show a system notification when something
+                    important happens. */}
+                {canUsePushNotifications && notificationPermission !== 'granted' && (
+                  <button
+                    onClick={async () => {
+                      const result = await requestNotificationPermission();
+                      setNotificationPermission(result);
+                      if (result === 'granted') {
+                        toast.success('Notifications enabled', {
+                          description: 'You will be notified even when the app is closed.',
+                        });
+                      }
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="block w-full text-left rounded-md px-3 py-2 text-base font-medium text-primary hover:bg-accent"
+                  >
+                    Enable notifications
+                  </button>
                 )}
               </>
             )}

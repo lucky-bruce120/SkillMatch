@@ -92,6 +92,31 @@ const JobDetailsPage = () => {
       navigate('/login', { state: { from: { pathname: `/job/${id}` } } });
       return;
     }
+
+    if (currentUser.role === 'Employer') {
+      toast.error("Employers cannot apply to jobs");
+      return;
+    }
+
+    // Check if profile is complete enough
+    try {
+      const profile = await apiServerClient.fetch('/profile', {
+        headers: { Authorization: `Bearer ${currentUser.token}` }
+      });
+      
+      // Basic validation - check for essential fields
+      if (!profile.full_name && !profile.firstName) {
+        toast.error("Please complete your profile before applying");
+        navigate('/profile?tab=personal');
+        return;
+      }
+    } catch (error) {
+      // If profile doesn't exist, direct them to complete it
+      toast.error("Please complete your profile before applying");
+      navigate('/profile?tab=personal');
+      return;
+    }
+
     setApplyModalOpen(true);
   };
 

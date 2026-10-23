@@ -9,8 +9,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sparkles, Check, X, Download, Loader2, Eye } from 'lucide-react';
+import { Sparkles, Check, X, Download, Loader2, Eye, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRealtime } from '@/hooks/useRealtime.js';
+import InterviewInviteDialog from '@/components/InterviewInviteDialog.jsx';
 
 const statusLabel = {
   pending: 'Pending',
@@ -30,6 +32,7 @@ const EmployerApplicationDashboard = () => {
   const [feedbackData, setFeedbackData] = useState({ status: '', feedback: '' });
   const [processing, setProcessing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const token = currentUser?.token;
 
@@ -39,7 +42,7 @@ const EmployerApplicationDashboard = () => {
       const applicationsData = await apiServerClient.fetch('/employer/applications', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      setApplications(applicationsData);
+      setApplications(Array.isArray(applicationsData) ? applicationsData : []);
     } catch (error) {
       console.error("Error fetching applications:", error);
       toast.error("Failed to load applications");
@@ -51,6 +54,12 @@ const EmployerApplicationDashboard = () => {
   useEffect(() => {
     fetchApplications();
   }, [token, fetchApplications]);
+
+  // New applications and status changes arrive live.
+  useRealtime({
+    'application:new': () => fetchApplications(),
+    'application:status': () => fetchApplications(),
+  });
 
   const handleAnalyzeCV = async (app) => {
     setProcessing(true);
@@ -190,7 +199,10 @@ const EmployerApplicationDashboard = () => {
                     <CardTitle className="text-2xl mb-1">{selectedApp.job_seeker_id?.email || 'Candidate Profile'}</CardTitle>
                     <CardDescription className="text-base">Applied for: <span className="font-medium text-foreground">{selectedApp.job_id?.title}</span></CardDescription>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
+                      <Calendar className="mr-1 h-4 w-4" /> Invite to Interview
+                    </Button>
                     {selectedApp.status === 'pending' && (
                       <>
                         <Button size="sm" variant="outline" className="text-green-600 hover:bg-green-50 hover:text-green-700 border-green-200" onClick={() => openFeedbackModal(selectedApp, 'accepted')}>
@@ -311,6 +323,15 @@ const EmployerApplicationDashboard = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Interview invitation */}
+      <InterviewInviteDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        applicationId={selectedApp?._id}
+        candidateName={selectedApp?.job_seeker_id?.email}
+        jobTitle={selectedApp?.job_id?.title}
+      />
     </div>
   );
 };

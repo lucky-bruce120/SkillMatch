@@ -54,8 +54,8 @@ const CareerPathPage = () => {
     );
   }
 
-  const paths = data?.paths || [];
-  const focusSkills = data?.focusSkills || [];
+  const paths = Array.isArray(data?.paths) ? data.paths : [];
+  const focusSkills = Array.isArray(data?.focusSkills) ? data.focusSkills : [];
 
   // Nothing to personalise from yet - point at the one action that unlocks it.
   if (data?.needsProfile) {
@@ -86,7 +86,7 @@ const CareerPathPage = () => {
                 <p className="text-sm font-medium mb-2">Skills currently in demand on SkillMatch</p>
                 <div className="flex flex-wrap gap-2 justify-center">
                   {focusSkills.map((skill) => (
-                    <Badge key={skill} variant="secondary">{skill}</Badge>
+                    <Badge key={String(skill)} variant="secondary">{String(skill)}</Badge>
                   ))}
                 </div>
               </div>

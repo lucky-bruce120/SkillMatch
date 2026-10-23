@@ -5,9 +5,10 @@ import Application from '../models/Application.js';
 import Job from '../models/Job.js';
 import JobSeekerProfile from '../models/JobSeekerProfile.js';
 import EmployerProfile from '../models/EmployerProfile.js';
-import Notification from '../models/Notification.js';
 import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
+import { emitToUser } from '../utils/eventBus.js';
+import { createNotification } from '../utils/createNotification.js';
 
 const router = express.Router();
 
@@ -31,10 +32,12 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    // Verify job seeker exists
-    const jobSeeker = await JobSeekerProfile.findOne({ user_id: jobSeekerId });
+    // Verify job seeker exists. A profile is created on demand: a new account
+    // has not necessarily filled one in yet, and applying should not fail just
+    // because onboarding was skipped.
+    let jobSeeker = await JobSeekerProfile.findOne({ user_id: jobSeekerId });
     if (!jobSeeker) {
-      return res.status(404).json({ error: 'Job seeker profile not found' });
+      jobSeeker = await JobSeekerProfile.create({ user_id: jobSeekerId });
     }
 
     // Check if already applied
@@ -51,21 +54,41 @@ router.post('/', authMiddleware, async (req, res) => {
     });
     await application.save();
 
-    // Get employer info from job
+    // Get employer info from job. This is only used for the company name; the
+    // notification itself must not depend on an employer profile existing, or
+    // an employer who never filled one in would never hear about an
+    // application.
     const employer = await EmployerProfile.findOne({ user_id: job.employer_id });
 
     // Create notification for employer
-    if (employer) {
-      const notification = new Notification({
+    {
+      const notification = await createNotification({
         user_id: job.employer_id,
         type: 'application_response',
         title: 'New Job Application',
         message: `${jobSeeker.firstName || 'A candidate'} applied for ${job.title}`,
         related_id: application._id,
-        isRead: false,
       });
-      await notification.save();
+
+      // Push it straight to the employer so their dashboard updates without a
+      // refresh.
+      emitToUser(job.employer_id, 'application:new', {
+        applicationId: application._id,
+        jobId: job._id,
+        jobTitle: job.title,
+        companyName: employer?.company_name || '',
+        candidateName: jobSeeker.firstName || 'A candidate',
+        message: notification.message,
+      });
     }
+
+    // The job seeker sees their own application appear immediately.
+    emitToUser(jobSeekerId, 'application:created', {
+      applicationId: application._id,
+      jobId: job._id,
+      jobTitle: job.title,
+      status: application.status,
+    });
 
     res.status(201).json({
       success: true,

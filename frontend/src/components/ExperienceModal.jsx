@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.jsx';
 import { Switch } from '@/components/ui/switch.jsx';
 import { Trash2, Save } from 'lucide-react';
+import { toast } from 'sonner';
 
 const ExperienceModal = ({ isOpen, onClose, experience, onSave, onDelete }) => {
   const [formData, setFormData] = useState({
@@ -27,6 +28,32 @@ const ExperienceModal = ({ isOpen, onClose, experience, onSave, onDelete }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // Validation
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (formData.start_date) {
+      const start = new Date(formData.start_date);
+      if (start > today) {
+        toast.error('Start date cannot be in the future');
+        return;
+      }
+    }
+    
+    if (!formData.currently_working && formData.end_date) {
+      const start = new Date(formData.start_date);
+      const end = new Date(formData.end_date);
+      if (end < start) {
+        toast.error('End date cannot be before start date');
+        return;
+      }
+      if (end > today) {
+        toast.error('End date cannot be in the future');
+        return;
+      }
+    }
+    
     onSave(formData);
   };
 

@@ -9,6 +9,7 @@ import cvRouter from './cv.js';
 import coursesRouter from './courses.js';
 import jobMarketRouter from './job-market.js';
 import interviewPrepRouter from './interview-prep.js';
+import interviewsRouter from './interviews.js';
 import applyJobRouter from './apply-job.js';
 import analyzeCandidateRouter from './analyze-candidates.js';
 import applicationResponseRouter from './application-response.js';
@@ -19,6 +20,7 @@ import savedJobsRouter from './saved-jobs.js';
 import adminRouter from './admin.js';
 import newsRouter from './news.js';
 import careerPathRouter from './career-path.js';
+import eventsRouter from './events.js';
 
 const router = Router();
 
@@ -37,12 +39,14 @@ export default () => {
   router.use('/admin', adminRouter);
   router.use('/job-market', jobMarketRouter);
   router.use('/interview-prep', interviewPrepRouter);
+  router.use('/interviews', interviewsRouter);
   router.use('/career-path', careerPathRouter);
   router.use('/job-recommendations', jobRecommendationsRouter);
   router.use('/apply-job', applyJobRouter);
   router.use('/analyze-candidate', analyzeCandidateRouter);
   router.use('/application-response', applicationResponseRouter);
   router.use('/cv-upload-analyze', cvUploadAnalyzeRouter);
+  router.use('/events', eventsRouter);
 
   return router;
 };

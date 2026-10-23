@@ -44,7 +44,22 @@ export const AuthProvider = ({ children }) => {
           },
         });
 
-        const formattedUser = { ...userData, role: formatUserRole(userData.role), token };
+        let profilePic = null;
+        try {
+          // Try to fetch profile picture for job seekers
+          if (userData.role === 'job_seeker' || userData.role === 'Job Seeker') {
+            const profile = await apiServerClient.fetch("/profile", {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+            profilePic = profile?.picture || null;
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        const formattedUser = { ...userData, role: formatUserRole(userData.role), token, profilePicture: profilePic };
         setCurrentUser(formattedUser);
         setIsAuthenticated(true);
       } catch (error) {
@@ -71,7 +86,7 @@ export const AuthProvider = ({ children }) => {
       const token = userData.token;
       localStorage.setItem("authToken", token);
 
-      const formattedUser = { ...userData.user, role: formatUserRole(userData.user.role), token };
+      const formattedUser = { ...userData.user, role: formatUserRole(userData.user.role), token, profilePicture: null };
       setCurrentUser(formattedUser);
       setIsAuthenticated(true);
 
@@ -92,7 +107,19 @@ export const AuthProvider = ({ children }) => {
       const token = userData.token;
       localStorage.setItem("authToken", token);
 
-      const formattedUser = { ...userData.user, role: formatUserRole(userData.user.role), token };
+      let profilePic = null;
+      try {
+        if (formatUserRole(userData.user.role) === 'Job Seeker') {
+          const profile = await apiServerClient.fetch("/profile", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          profilePic = profile?.picture || null;
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      const formattedUser = { ...userData.user, role: formatUserRole(userData.user.role), token, profilePicture: profilePic };
       setCurrentUser(formattedUser);
       setIsAuthenticated(true);
 

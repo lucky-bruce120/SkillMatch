@@ -24,7 +24,7 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const userId = req.userId;
 
-    const notifications = await Notification.find({ user_id: userId }).sort({ created: -1 });
+    const notifications = await Notification.find({ user_id: userId }).sort({ created: -1 }).limit(100);
 
     res.json(notifications);
   } catch (error) {

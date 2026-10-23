@@ -4,9 +4,10 @@ import Application from '../models/Application.js';
 import JobSeekerProfile from '../models/JobSeekerProfile.js';
 import User from '../models/User.js';
 import Job from '../models/Job.js';
-import Notification from '../models/Notification.js';
 import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
+import { emitToUser } from '../utils/eventBus.js';
+import { createNotification } from '../utils/createNotification.js';
 
 const router = express.Router();
 
@@ -53,14 +54,13 @@ router.put('/', authMiddleware, async (req, res) => {
 
     // Get job seeker info.
     // Note: application.job_seeker_id references User, so the profile is
-    // looked up by its user_id rather than by its own _id.
+    // looked up by its user_id rather than by its own _id. A missing profile
+    // must not block the employer from recording their decision, so fall back
+    // to the user account.
     const jobSeeker = await JobSeekerProfile.findOne({ user_id: application.job_seeker_id });
-    if (!jobSeeker) {
-      return res.status(404).json({ error: 'Job seeker profile not found' });
-    }
 
     // Get user info to confirm the account still exists
-    const user = await User.findById(jobSeeker.user_id);
+    const user = await User.findById(jobSeeker ? jobSeeker.user_id : application.job_seeker_id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -74,15 +74,24 @@ router.put('/', authMiddleware, async (req, res) => {
       rejected: `Your application for ${jobTitle} has been reviewed.`,
     };
 
-    const notification = new Notification({
+    const notification = await createNotification({
       user_id: user._id,
       type: 'application_response',
       title: `Application ${status}`,
       message: notificationMessages[status] || `Your application status has been updated to ${status}`,
       related_id: application._id,
-      isRead: false,
     });
-    await notification.save();
+
+    // Push the new status to the job seeker right away so their applications
+    // list updates without a refresh.
+    emitToUser(user._id, 'application:status', {
+      applicationId: application._id,
+      jobId: job._id,
+      jobTitle: job.title,
+      status,
+      feedback: application.feedback || '',
+      message: notification.message,
+    });
 
     res.json({
       success: true,

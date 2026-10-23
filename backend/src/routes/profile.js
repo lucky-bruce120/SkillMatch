@@ -1,6 +1,8 @@
 import express from 'express';
 import multer from 'multer';
+import mongoose from 'mongoose';
 import JobSeekerProfile from '../models/JobSeekerProfile.js';
+import User from '../models/User.js';
 import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
 import path from 'path';
@@ -134,6 +136,51 @@ router.get('/', authMiddleware, async (req, res) => {
     res.json(formatProfile(profile));
   } catch (error) {
     logger.error('Profile fetch error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /profile/public/:userId
+ *
+ * A job seeker's profile, viewable by anyone who has the link. This is what
+ * lets an employer open a candidate's details from a shared URL instead of
+ * only through their own application list.
+ *
+ * The profile is still a profile, not an account: it exposes the professional
+ * details and never the password, role or contact details the candidate has
+ * not chosen to publish (the `profile_visible` preference).
+ */
+router.get('/public/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    const profile = await JobSeekerProfile.findOne({ user_id: userId });
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const user = await User.findById(userId).select('email role');
+    if (!user) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const preferences = profile.preferences || {};
+    const isVisible = preferences.profile_visible !== false;
+
+    res.json({
+      ...formatProfile(profile),
+      // Respect the candidate's choice about who can see their details.
+      email: isVisible ? user.email : '',
+      phone: isVisible ? (profile.phone || '') : '',
+      profile_visible: isVisible,
+    });
+  } catch (error) {
+    logger.error('Public profile fetch error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

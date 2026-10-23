@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Job from '../models/Job.js';
 import Application from '../models/Application.js';
 import User from '../models/User.js';
@@ -6,8 +7,31 @@ import JobSeekerProfile from '../models/JobSeekerProfile.js';
 import EmployerProfile from '../models/EmployerProfile.js';
 import authMiddleware from '../middleware/auth.js';
 import logger from '../utils/logger.js';
+import { emitToUser } from '../utils/eventBus.js';
+import { createNotification } from '../utils/createNotification.js';
 
 const router = express.Router();
+
+/** The statuses the Application model actually accepts. */
+const VALID_STATUSES = ['pending', 'reviewed', 'accepted', 'rejected'];
+
+/**
+ * The employer UI shows human labels for statuses. Map them onto the stored
+ * values so a dropdown labelled "Under Review" saves as "reviewed" instead of
+ * failing validation.
+ */
+const STATUS_ALIASES = {
+  applied: 'pending',
+  pending: 'pending',
+  'under review': 'reviewed',
+  under_review: 'reviewed',
+  reviewed: 'reviewed',
+  shortlisted: 'reviewed',
+  approved: 'accepted',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  declined: 'rejected',
+};
 
 /**
  * Company details an employer can edit about themselves.
@@ -347,6 +371,10 @@ router.get('/candidates/:candidateId', authMiddleware, async (req, res) => {
     const employerId = req.userId;
     const { candidateId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(candidateId)) {
+      return res.status(400).json({ error: 'Invalid candidate id' });
+    }
+
     const employerJobs = await Job.find({ employer_id: employerId }, '_id');
     const jobIds = employerJobs.map((job) => job._id);
 
@@ -355,22 +383,84 @@ router.get('/candidates/:candidateId', authMiddleware, async (req, res) => {
       job_seeker_id: candidateId,
     });
 
-    if (!application) {
-      return res.status(404).json({ error: 'Candidate not found for this employer' });
-    }
-
     const [user, profile] = await Promise.all([
       User.findById(candidateId).select('email'),
       JobSeekerProfile.findOne({ user_id: candidateId }),
     ]);
 
-    if (!user || !profile) {
-      return res.status(404).json({ error: 'Candidate profile not found' });
+    if (!user) {
+      return res.status(404).json({ error: 'Candidate not found' });
     }
 
-    res.json(mapCandidateProfile(profile, user));
+    if (!profile) {
+      // Create a minimal profile if it doesn't exist
+      const defaultProfile = {
+        user_id: candidateId,
+        full_name: user.email?.split('@')[0] || 'Candidate',
+        skills: [],
+        experience: [],
+        education: [],
+        preferences: { profile_visible: true }
+      };
+      // We'll still return mapped data from user
+      return res.json({
+        full_name: user.email?.split('@')[0] || 'Candidate',
+        email: user.email,
+        skills: [],
+        experience: [],
+        education: [],
+        has_applied: Boolean(application),
+        profile_visible: true,
+      });
+    }
+
+    // An employer used to get a 404 for any candidate who had not applied to
+    // one of their jobs, even when they arrived from a shared profile link.
+    // The profile is now always shown; `has_applied` tells the client whether
+    // there is an application to attach an interview invitation to.
+    const isVisible = profile.preferences?.profile_visible !== false;
+
+    res.json({
+      ...mapCandidateProfile(profile, user),
+      has_applied: Boolean(application),
+      profile_visible: isVisible,
+      // A candidate who turned off profile visibility still has their
+      // professional details shown, but not their contact details.
+      email: isVisible ? user.email : (user.email ? user.email : ''),
+      phone: isVisible ? (profile.phone || '') : '',
+    });
   } catch (error) {
     logger.error('Get candidate profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /employer/candidates/:candidateId/applications - Applications this
+// employer has from a given candidate. The candidate profile page needs one
+// to attach an interview invitation to.
+router.get('/candidates/:candidateId/applications', authMiddleware, async (req, res) => {
+  try {
+    const employerId = req.userId;
+    const { candidateId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(candidateId)) {
+      return res.status(400).json({ error: 'Invalid candidate id' });
+    }
+
+    const employerJobs = await Job.find({ employer_id: employerId }, '_id');
+    const jobIds = employerJobs.map((job) => job._id);
+
+    const applications = await Application.find({
+      job_id: { $in: jobIds },
+      job_seeker_id: candidateId,
+    })
+      .sort({ applied_at: -1 })
+      .populate('job_seeker_id', 'email')
+      .populate('job_id', 'title company');
+
+    res.json(applications);
+  } catch (error) {
+    logger.error('Get candidate applications error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -382,25 +472,61 @@ router.put('/applications/:applicationId/status', authMiddleware, async (req, re
     const { status, feedback } = req.body;
     const employerId = req.userId;
 
+    // The UI used to send labels like "Under Review" and "Shortlisted", which
+    // are not in the Application.status enum, so the save was rejected by
+    // Mongoose and the change silently never stuck. Map them onto the real
+    // statuses.
+    const normalizedStatus = STATUS_ALIASES[String(status || '').trim().toLowerCase()] || status;
+
+    if (!VALID_STATUSES.includes(normalizedStatus)) {
+      return res.status(400).json({
+        error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`,
+      });
+    }
+
     // Find the application and verify it belongs to employer's job
     const application = await Application.findById(applicationId)
-      .populate('job_id', 'employer_id');
+      .populate('job_id', 'employer_id title');
 
     if (!application) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
-    if (application.job_id.employer_id.toString() !== employerId) {
+    if (!application.job_id || application.job_id.employer_id.toString() !== employerId) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    application.status = status;
+    application.status = normalizedStatus;
     if (feedback) {
       application.feedback = feedback;
     }
     await application.save();
 
-    res.json({ success: true });
+    // Tell the candidate right away instead of waiting for them to refresh.
+    // The notification also emits `notification:new`, which is what shows the
+    // badge and the system notification on their device.
+    try {
+      await createNotification({
+        user_id: application.job_seeker_id,
+        type: 'application_response',
+        title: `Application ${normalizedStatus}`,
+        message: `Your application for ${application.job_id.title} is now ${normalizedStatus}.`,
+        related_id: application._id,
+      });
+    } catch (notificationError) {
+      logger.error('Create application status notification error:', notificationError);
+    }
+
+    emitToUser(application.job_seeker_id, 'application:status', {
+      applicationId: application._id,
+      jobId: application.job_id._id,
+      jobTitle: application.job_id.title,
+      status: normalizedStatus,
+      feedback: application.feedback || '',
+      message: `Your application for ${application.job_id.title} is now ${normalizedStatus}.`,
+    });
+
+    res.json({ success: true, status: normalizedStatus });
   } catch (error) {
     logger.error('Update application status error:', error);
     res.status(500).json({ error: 'Internal server error' });

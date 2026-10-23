@@ -46,4 +46,9 @@ courseSchema.pre('save', function pre() {
   this.updated = Date.now();
 });
 
+// Expose `id` virtual for consistency with other models and to avoid issues
+// if populated Course documents are returned directly.
+courseSchema.set('toJSON', { virtuals: true });
+courseSchema.set('toObject', { virtuals: true });
+
 export default mongoose.model('Course', courseSchema);

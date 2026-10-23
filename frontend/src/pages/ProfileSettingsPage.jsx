@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.jsx';
 import { Checkbox } from '@/components/ui/checkbox.jsx';
 import { Progress } from '@/components/ui/progress.jsx';
-import { Plus, FileText, UploadCloud, Download, Loader2, Image as ImageIcon, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, FileText, UploadCloud, Download, Loader2, Image as ImageIcon, AlertCircle, RefreshCw, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 
 import ExperienceModal from '@/components/ExperienceModal.jsx';
@@ -379,7 +379,13 @@ const ProfileSettingsPage = () => {
       setFormData(persisted);
       setSavedFormData(persisted);
       calculateAndSaveStrength(updated, skills, education, experience);
-      toast.success("Profile updated successfully");
+      toast.success("Profile updated and saved successfully");
+      // Update auth context if profile pic is present
+      if (currentUser && updated.picture) {
+        currentUser.profilePicture = updated.picture;
+        // Dispatch event to update header
+        window.dispatchEvent(new Event('profileUpdated'));
+      }
     } catch (error) {
       // Prefer the server's message; `error.body.error` is the actionable one.
       const errorMessage = error.body?.error || error.message || "An unexpected error occurred while updating your profile.";
@@ -433,8 +439,12 @@ const ProfileSettingsPage = () => {
 
       console.log('[PIC UPLOAD] Success! Response:', updated);
       setProfile(updated);
+      if (currentUser) {
+        currentUser.profilePicture = updated?.picture || null;
+        window.dispatchEvent(new Event('profileUpdated'));
+      }
       calculateAndSaveStrength(updated, skills, education, experience);
-      toast.success("Profile picture updated successfully");
+      toast.success("Profile picture updated and saved successfully");
     } catch (error) {
       console.error('[PIC UPLOAD] FAILED. Error object:', error);
       let errMsg = "Failed to upload picture.";
@@ -458,8 +468,12 @@ const ProfileSettingsPage = () => {
       });
       setProfile(updated);
       setPicPreview(null);
+      if (currentUser) {
+        currentUser.profilePicture = null;
+        window.dispatchEvent(new Event('profileUpdated'));
+      }
       calculateAndSaveStrength(updated, skills, education, experience);
-      toast.success("Profile picture removed");
+      toast.success("Profile picture removed and saved");
     } catch (error) {
       console.error('[PIC REMOVE] Failed:', error);
       toast.error("Failed to remove picture");
@@ -756,6 +770,14 @@ const ProfileSettingsPage = () => {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Profile Settings</h1>
           <p className="text-muted-foreground mt-1">Manage your personal information, experience, and resume.</p>
+          {/* Let the candidate see exactly what an employer sees. */}
+          {profile?.user_id && (
+            <Button variant="outline" size="sm" className="mt-3" asChild>
+              <a href={`/candidate/${profile.user_id}`} target="_blank" rel="noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" /> View my public profile
+              </a>
+            </Button>
+          )}
         </div>
         
         <Card className="w-full md:w-80 bg-primary/5 border-primary/20">
